@@ -1,0 +1,112 @@
+#
+# Build System — PEP 517/518 backend configuration
+#
+
+[build-system]
+# setuptools builds the sdist/wheel, wheel provides bdist_wheel
+requires = ["setuptools >= 68.0", "wheel >= 0.41.0"]
+build-backend = "setuptools.build_meta"
+
+#
+# Project Metadata — PEP 621 package definition
+#
+
+[project]
+name = "pulp_trustify"
+version = "0.0.1.dev"
+description = "Pulp plugin integrating Trustify CVE intelligence for vulnerability-gated artifact serving"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+authors = [{ name = "Otávio Fernandes" }]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: Django",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+# pulpcore is the Django-based plugin host framework
+dependencies = ["pulpcore>=3.105.0,<3.115"]
+
+# dev extras: linting, testing, task runner
+[project.optional-dependencies]
+dev = ["ruff", "pytest", "poethepoet"]
+
+# pulpcore discovers plugins via this entry point; the value resolves to the
+# PulpTrustifyPluginAppConfig class path stored in pulp_trustify.__init__
+[project.entry-points."pulpcore.plugin"]
+pulp_trustify = "pulp_trustify:default_app_config"
+
+#
+# Setuptools — package discovery
+#
+
+[tool.setuptools]
+# explicit package list (no auto-discovery) to control what ships in the wheel
+packages = [
+    "pulp_trustify",
+    "pulp_trustify.app",
+    "pulp_trustify.app.tasks",
+]
+
+#
+# Ruff — linter and formatter
+#
+
+[tool.ruff]
+line-length = 82
+# skip generated/vendored code that shouldn't be linted
+exclude = ["docs/**", "**/migrations/*.py"]
+
+[tool.ruff.lint]
+# E/F/W: pycodestyle + pyflakes, I: isort, TID: tidy-imports, T10: debugger calls
+select = ["E", "F", "W", "I", "TID", "T10"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+# force absolute imports everywhere
+ban-relative-imports = "all"
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# plugins must use the public API surface, not internal modules
+"pulpcore.app".msg = "Use pulpcore.plugin instead of pulpcore.app"
+# distutils is deprecated since Python 3.10
+"distutils".msg = "distutils is deprecated, use setuptools"
+
+#
+# Pytest — test runner
+#
+
+[tool.pytest.ini_options]
+# unit tests live side-by-side with source (Go-style)
+testpaths = ["pulp_trustify"]
+# enforce *_test.py naming convention
+python_files = ["*_test.py"]
+# importlib mode avoids sys.path pollution with co-located tests
+addopts = ["--import-mode=importlib"]
+
+#
+# Poe the Poet — task runner
+#
+
+[tool.poe.tasks]
+# run ruff linter checks
+lint = "ruff check ."
+# auto-fix linter violations where possible
+fix = "ruff check --fix ."
+# check formatting without modifying files
+fmt-check = "ruff format --check ."
+# apply formatting
+fmt = "ruff format ."
+# run unit tests
+[tool.poe.tasks.test]
+shell = "pytest; rc=$?; [ $rc -eq 5 ] && exit 0 || exit $rc"
+# exit code 5 = no tests collected, tolerated until first test exists
+help = "run unit tests"
+
+# run all checks (lint + format check + tests)
+[tool.poe.tasks.check]
+sequence = ["lint", "fmt-check", "test"]
+help = "run all CI checks (lint, format, test)"
