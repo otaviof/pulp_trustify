@@ -36,6 +36,7 @@ docs/_build/
 # Environment
 .env
 .venv
+tmp/
 env/
 venv/
 

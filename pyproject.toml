@@ -29,7 +29,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 # pulpcore is the Django-based plugin host framework
-dependencies = ["pulpcore>=3.105.0,<3.115"]
+dependencies = ["pulpcore>=3.105.0,<3.115", "requests", "packaging"]
 
 # dev extras: linting, testing, task runner
 [project.optional-dependencies]
@@ -50,6 +50,8 @@ packages = [
     "pulp_trustify",
     "pulp_trustify.app",
     "pulp_trustify.app.tasks",
+    "pulp_trustify.client",
+    "pulp_trustify.purl",
 ]
 
 #
@@ -62,7 +64,7 @@ line-length = 82
 exclude = ["docs/**", "**/migrations/*.py"]
 
 [tool.ruff.lint]
-# E/F/W: pycodestyle + pyflakes, I: isort, TID: tidy-imports, T10: debugger calls
+# E/F/W: pycodestyle, pyflakes, I: isort, TID: tidy-imports, T10: debugger calls
 select = ["E", "F", "W", "I", "TID", "T10"]
 
 [tool.ruff.lint.flake8-tidy-imports]
@@ -106,7 +108,7 @@ shell = "pytest; rc=$?; [ $rc -eq 5 ] && exit 0 || exit $rc"
 # exit code 5 = no tests collected, tolerated until first test exists
 help = "run unit tests"
 
-# run all checks (lint + format check + tests)
+# run all checks (lint, format check and tests)
 [tool.poe.tasks.check]
 sequence = ["lint", "fmt-check", "test"]
 help = "run all CI checks (lint, format, test)"
