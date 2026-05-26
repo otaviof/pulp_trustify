@@ -1,0 +1,9 @@
+.git/
+.venv/
+.env
+.claude/
+.notes/
+__pycache__/
+*.pyc
+*.egg-info/
+tmp/

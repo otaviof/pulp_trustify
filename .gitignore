@@ -1,10 +1,10 @@
-# Byte-compiled / optimized / DLL files
+# Byte-compiled, optimized, DLL files
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 
-# Distribution / packaging
+# Distribution, packaging
 build/
 dist/
 *.egg-info/
@@ -26,7 +26,8 @@ coverage.xml
 *.mo
 *.pot
 
-# IDEs
+# IDEs and Agentic
+.claude/
 .idea/
 .vscode/
 

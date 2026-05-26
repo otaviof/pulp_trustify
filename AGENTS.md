@@ -4,6 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Quick Start
 
+Activate the virtualenv before running any tool:
+
+```bash
+source .venv/bin/activate
+```
+
+If dependencies or dev tools are missing, reinstall:
+
+```bash
+pip install -e '.[dev]'
+```
+
 See [README.md § Development](README.md#development) for setup and available `poe` tasks. All tool configuration lives in [pyproject.toml](pyproject.toml) — read its section comments before changing build, lint, or test behavior.
 
 ## Architecture

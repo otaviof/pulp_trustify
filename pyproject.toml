@@ -49,6 +49,7 @@ pulp_trustify = "pulp_trustify:default_app_config"
 packages = [
     "pulp_trustify",
     "pulp_trustify.app",
+    "pulp_trustify.app.migrations",
     "pulp_trustify.app.tasks",
     "pulp_trustify.client",
     "pulp_trustify.purl",
@@ -104,11 +105,24 @@ fmt-check = "ruff format --check ."
 fmt = "ruff format ."
 # run unit tests
 [tool.poe.tasks.test]
-shell = "pytest; rc=$?; [ $rc -eq 5 ] && exit 0 || exit $rc"
-# exit code 5 = no tests collected, tolerated until first test exists
-help = "run unit tests"
+shell = "pytest -m 'not integration'; rc=$?; [ $rc -eq 5 ] && exit 0 || exit $rc"
+help = "run unit tests (excludes integration)"
 
 # run all checks (lint, format check and tests)
 [tool.poe.tasks.check]
 sequence = ["lint", "fmt-check", "test"]
 help = "run all CI checks (lint, format, test)"
+
+[tool.poe.env]
+IMAGE_REPOSITORY = "registry.rachael.home.lan"
+IMAGE_NAMESPACE = "pulp-trustify"
+IMAGE_TAG = "latest"
+IMAGE = "${IMAGE_REPOSITORY}/${IMAGE_NAMESPACE}:${IMAGE_TAG}"
+
+[tool.poe.tasks.image-build]
+cmd = "podman build -t ${IMAGE} -f Containerfile ."
+help = "build the plugin container image"
+
+[tool.poe.tasks.image-push]
+cmd = "podman push ${IMAGE} --tls-verify=false"
+help = "push the plugin image to the dev registry"
