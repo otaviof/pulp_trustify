@@ -416,3 +416,30 @@ def test_fallback_allows_fixed_urllib3(
         threshold="high",
         fail_open=False,
     )
+
+
+@pytest.mark.integration
+def test_search_and_version_matching(
+    trustify_client,
+):
+    """Verify search + version parsing against live CVE data.
+
+    Exercises the fallback pipeline (text search, regex
+    extraction, version comparison) independently of the
+    analyze endpoint.
+    """
+    from pulp_trustify.version import (
+        extract_version_ranges,
+        is_version_affected,
+    )
+
+    response = trustify_client.search_vulnerabilities("urllib3")
+    assert response["total"] > 0
+
+    for item in response["items"]:
+        ranges = extract_version_ranges(item.get("description", ""))
+        if ranges and is_version_affected("2.6.2", ranges):
+            assert not is_version_affected("2.7.0", ranges)
+            return
+
+    pytest.fail("No CVE with parseable version ranges affecting urllib3 2.6.2")
