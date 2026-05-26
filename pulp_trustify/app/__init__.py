@@ -11,3 +11,9 @@ class PulpTrustifyPluginAppConfig(PulpPluginAppConfig):
     version = _meta["Version"]
     python_package_name = _meta["Name"]
     domain_compatible = True
+
+    def ready(self):
+        super().ready()
+        from pulp_trustify.upload import connect_signal
+
+        connect_signal()

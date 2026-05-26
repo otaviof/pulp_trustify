@@ -1,8 +1,15 @@
 # `pulp_trustify`
 
-Pulp plugin integrating [Trustify](https://trustify.dev/) CVE intelligence for vulnerability-gated artifact serving. When attached to a Pulp distribution as a `ContentGuard`, the plugin queries Trustify's vulnerability analysis API at download time and blocks artifacts that have CVEs at or above a configurable severity threshold.
+Pulp plugin integrating [Trustify](https://trustify.dev/) CVE intelligence for vulnerability-gated artifact serving. The plugin provides two gating mechanisms:
+
+1. **Download Guard**: A `ContentGuard` that blocks downloads of vulnerable packages
+2. **Upload Gate**: A pre-save signal handler that blocks uploads of vulnerable packages
+
+Both use the same dual-mode detection (analyze + search fallback) and share the severity threshold configuration.
 
 ## How It Works
+
+### Download Guard
 
 1. A client requests a package download (e.g., `pip install`)
 2. Pulp's Content App invokes `TrustifyGuard.permit(request)`
@@ -12,6 +19,21 @@ Pulp plugin integrating [Trustify](https://trustify.dev/) CVE intelligence for v
    below)
 5. Vulnerabilities matching the severity threshold produce a
    `403 Forbidden`
+
+### Upload Gate
+
+1. A client uploads a Python package via the Pulp API
+2. Django's `pre_save` signal fires before creating `PythonPackageContent`
+3. The gate constructs a PURL from the package's `name` and `version` fields
+4. The gate queries Trustify using the same dual-mode detection
+5. Vulnerabilities matching the severity threshold produce a `400 Bad Request`
+
+**Limitations**:
+
+- Controlled by the `TRUSTIFY_GATE_UPLOADS` setting (default: `True`)
+- Does not apply to packages imported via `pulp_python` sync tasks (uses `bulk_create()`, which bypasses Django signals)
+- Adds latency to each upload (30s timeout per Trustify query)
+- Requires `pulp_python` to be installed (gracefully disabled otherwise)
 
 ### Detection Modes
 
@@ -35,18 +57,13 @@ When OSV data is available, this is the most reliable detection method.
 - Parses version ranges from CVE description text using regex
 - Compares versions client-side using `packaging.version`
 
-This mode enables vulnerability detection when only the CVE importer
-is active (no OSV data). It is best-effort: version range parsing is
-heuristic, and some CVE phrasings may not be recognized.
+This mode enables vulnerability detection when only the CVE importer is active (no OSV data). It is best-effort: version range parsing is heuristic, and some CVE phrasings may not be recognized.
 
-**The guard always tries analyze first.** The fallback is transparent:
-no configuration change is needed. When you enable the OSV importer,
-the guard automatically switches to analyze mode.
+**The guard always tries analyze first.** The fallback is transparent: no configuration change is needed. When you enable the OSV importer, the guard automatically switches to analyze mode.
 
 ### Trustify Importer Requirements
 
-The plugin's behavior depends on which importers are enabled on your
-Trustify instance:
+The plugin's behavior depends on which importers are enabled on your Trustify instance:
 
 | Importer | Detection Mode | Notes |
 |:---------|:--------------|:------|
@@ -55,8 +72,7 @@ Trustify instance:
 | **CSAF** (vendor advisories) | Analyze mode | Vendor-specific (e.g., Red Hat). Not applicable for PyPI. |
 | **None** | Blocks or allows all | If no importers are active: `fail_open=True` allows all downloads, `fail_open=False` blocks all. |
 
-To get full coverage for PyPI packages, enable the PyPI OSV importer
-in Trustify:
+To get full coverage for PyPI packages, enable the PyPI OSV importer in Trustify:
 
 ```json
 {
@@ -69,9 +85,7 @@ in Trustify:
 }
 ```
 
-The guard works immediately with only the CVE importer active
-(fallback mode), but analyze mode is more reliable once OSV data is
-ingested.
+The guard works immediately with only the CVE importer active (fallback mode), but analyze mode is more reliable once OSV data is ingested.
 
 ## Development
 
@@ -122,6 +136,13 @@ The image reference is configured in `pyproject.toml` under `[tool.poe.env]` (`I
 
 The plugin needs three things on the cluster: the custom image, a CA bundle for internal TLS, and Trustify connection settings via `PULP_`-prefixed env vars (read by Dynaconf at runtime).
 
+**Note**: The upload gate activates automatically when `pulp_python` is installed. No additional configuration is needed beyond the settings below. To disable upload gating, set `PULP_TRUSTIFY_GATE_UPLOADS=false`.
+
+**Component Requirements**:
+- **Content App**: Needs settings for download guard
+- **API**: Needs settings for API views (if any)
+- **Worker**: Needs settings for upload gate (upload processing happens here)
+
 #### Create the CA ConfigMap
 
 ```bash
@@ -159,6 +180,17 @@ kubectl patch pulp pulp -n pulp --type merge -p '{
         {"name": "PULP_TRUSTIFY_FAIL_OPEN", "value": "false"},
         {"name": "PULP_TRUSTIFY_CA_BUNDLE", "value": "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"}
       ]
+    },
+    "worker": {
+      "env_vars": [
+        {"name": "PULP_TRUSTIFY_URL", "value": "https://trustify.rachael.home.lan"},
+        {"name": "PULP_TRUSTIFY_ISSUER_URL", "value": "https://sso.rachael.home.lan/realms/trustify"},
+        {"name": "PULP_TRUSTIFY_CLIENT_ID", "value": "cli"},
+        {"name": "PULP_TRUSTIFY_CLIENT_SECRET", "value": "<secret>"},
+        {"name": "PULP_TRUSTIFY_SEVERITY_THRESHOLD", "value": "critical"},
+        {"name": "PULP_TRUSTIFY_FAIL_OPEN", "value": "false"},
+        {"name": "PULP_TRUSTIFY_CA_BUNDLE", "value": "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"}
+      ]
     }
   }
 }'
@@ -177,16 +209,16 @@ The Operator restarts all pods automatically after patching.
 | `TRUSTIFY_ISSUER_URL` | `""` | OIDC issuer URL (Keycloak realm) |
 | `TRUSTIFY_CA_BUNDLE` | `""` | Path to CA certificate bundle |
 | `TRUSTIFY_SEVERITY_THRESHOLD` | `"critical"` | Minimum severity to block (`low`, `medium`, `high`, `critical`) |
-| `TRUSTIFY_FAIL_OPEN` | `False` | If `True`, allow downloads when Trustify API calls fail (applies to both analyze and search fallback modes) |
+| `TRUSTIFY_FAIL_OPEN` | `False` | If `True`, allow downloads/uploads when Trustify API calls fail (applies to both analyze and search fallback modes) |
+| `TRUSTIFY_GATE_UPLOADS` | `True` | If `False`, disable upload-time vulnerability checks (download guard still applies) |
 
-All settings are read via Dynaconf. Set them as `PULP_TRUSTIFY_*` env
-vars on the Pulp pods.
+All settings are read via Dynaconf. Set them as `PULP_TRUSTIFY_*` env vars on the Pulp pods.
 
-**Note:** The guard automatically chooses the detection mode based on
-Trustify's data. No configuration change is needed to switch between
-analyze and search fallback modes.
+**Note:** The guard automatically chooses the detection mode based on Trustify's data. No configuration change is needed to switch between analyze and search fallback modes.
 
-### 4. Create and Attach the Guard
+### 4. Create and Attach the Download Guard
+
+The upload gate activates automatically. The download guard requires explicit attachment to a distribution:
 
 ```bash
 # Create a TrustifyGuard instance
@@ -211,7 +243,14 @@ curl -s https://pulp.example.com/api/v3/status/ | \
   for v in json.load(sys.stdin)['versions'] \
   if v['component']=='trustify']"
 
-# Download a vulnerable package (should return 403)
+# Test upload gate: upload a vulnerable package (should return 400)
+curl -X POST https://pulp.example.com/api/v3/content/python/packages/ \
+  -u admin:<password> \
+  -F "name=urllib3" \
+  -F "version=2.6.2" \
+  -F "file=@urllib3-2.6.2-py3-none-any.whl"
+
+# Test download guard: download a vulnerable package (should return 403)
 # Works in both analyze mode (with OSV) and search fallback mode
 # (CVE-only)
 curl -o /dev/null -w "%{http_code}" \
