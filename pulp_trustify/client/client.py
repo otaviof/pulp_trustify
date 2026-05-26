@@ -109,3 +109,43 @@ class TrustifyClient:
             return response.json()
         except requests.RequestException as exc:
             raise TrustifyError(f"Trustify API request failed: {exc}") from exc
+
+    def search_vulnerabilities(
+        self,
+        query: str,
+        offset: int = 0,
+        limit: int = 10,
+    ) -> dict:
+        endpoint = f"{self._url}/api/{self._api_version}/vulnerability"
+        try:
+            response = self._session.get(
+                endpoint,
+                params={
+                    "q": query,
+                    "offset": offset,
+                    "limit": limit,
+                },
+                headers=self._get_headers(),
+                timeout=30,
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as exc:
+            raise TrustifyError(f"Vulnerability search failed: {exc}") from exc
+
+    def get_vulnerability(self, identifier: str) -> dict:
+        endpoint = (
+            f"{self._url}/api/{self._api_version}/vulnerability/{identifier}"
+        )
+        try:
+            response = self._session.get(
+                endpoint,
+                headers=self._get_headers(),
+                timeout=30,
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as exc:
+            raise TrustifyError(
+                f"Vulnerability detail fetch failed: {exc}"
+            ) from exc

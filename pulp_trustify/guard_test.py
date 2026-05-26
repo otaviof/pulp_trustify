@@ -7,33 +7,30 @@ from pulp_trustify.guard import permit_request
 
 
 class _FakeClient:
-    """Mock TrustifyClient for unit tests."""
-
-    def __init__(self, response=None, error=None):
-        """Initialize the fake client.
-
-        Args:
-            response: dict to return from analyze(), or None.
-            error: exception to raise from analyze(), or None.
-        """
+    def __init__(
+        self,
+        response=None,
+        error=None,
+        search_response=None,
+        search_error=None,
+    ):
         self._response = response
         self._error = error
+        self._search_response = search_response
+        self._search_error = search_error
 
     def analyze(self, purls):
-        """Simulate TrustifyClient.analyze() method.
-
-        Args:
-            purls: list of PURL strings to analyze.
-
-        Returns:
-            The response dict provided at initialization.
-
-        Raises:
-            The error provided at initialization, if any.
-        """
         if self._error:
             raise self._error
         return self._response or {"items": []}
+
+    def search_vulnerabilities(self, query, offset=0, limit=10):
+        if self._search_error:
+            raise self._search_error
+        return self._search_response or {
+            "items": [],
+            "total": 0,
+        }
 
 
 def test_blocks_vulnerable_package():
@@ -169,6 +166,204 @@ def test_unknown_severity_not_blocked():
     )
 
 
+def test_fallback_blocks_vulnerable_package():
+    """Block vulnerable package via search fallback."""
+    search_response = {
+        "items": [
+            {
+                "identifier": "CVE-2026-21441",
+                "title": "urllib3 vulnerable to ...",
+                "description": (
+                    "Starting in version 1.22 and prior to version 2.6.3"
+                ),
+                "average_severity": "high",
+                "average_score": 8.9,
+                "advisories": [],
+            }
+        ],
+        "total": 1,
+    }
+    client = _FakeClient(
+        response={},
+        search_response=search_response,
+    )
+
+    with pytest.raises(PermissionError, match="CVE-2026-21441"):
+        permit_request(
+            client=client,
+            path="urllib3-2.6.2.tar.gz",
+            threshold="high",
+            fail_open=False,
+        )
+
+
+def test_fallback_allows_fixed_version():
+    """Allow fixed version via search fallback."""
+    search_response = {
+        "items": [
+            {
+                "identifier": "CVE-2026-21441",
+                "title": "urllib3 vulnerable to ...",
+                "description": (
+                    "Starting in version 1.22 and prior to version 2.6.3"
+                ),
+                "average_severity": "high",
+                "average_score": 8.9,
+                "advisories": [],
+            }
+        ],
+        "total": 1,
+    }
+    client = _FakeClient(
+        response={},
+        search_response=search_response,
+    )
+
+    permit_request(
+        client=client,
+        path="urllib3-2.6.3.tar.gz",
+        threshold="high",
+        fail_open=False,
+    )
+
+
+def test_fallback_allows_no_version_ranges():
+    """Allow when CVE has no parseable version ranges."""
+    search_response = {
+        "items": [
+            {
+                "identifier": "CVE-2026-12345",
+                "title": "Some vulnerability",
+                "description": "No version info here",
+                "average_severity": "high",
+                "average_score": 8.5,
+                "advisories": [],
+            }
+        ],
+        "total": 1,
+    }
+    client = _FakeClient(
+        response={},
+        search_response=search_response,
+    )
+
+    permit_request(
+        client=client,
+        path="urllib3-2.6.2.tar.gz",
+        threshold="high",
+        fail_open=False,
+    )
+
+
+def test_fallback_allows_empty_search():
+    """Allow when search returns no results."""
+    search_response = {
+        "items": [],
+        "total": 0,
+    }
+    client = _FakeClient(
+        response={},
+        search_response=search_response,
+    )
+
+    permit_request(
+        client=client,
+        path="urllib3-2.6.2.tar.gz",
+        threshold="high",
+        fail_open=False,
+    )
+
+
+def test_fallback_fail_open_on_search_error():
+    """Allow when search fails and fail_open is True."""
+    client = _FakeClient(
+        response={},
+        search_error=TrustifyError("Search API unavailable"),
+    )
+
+    permit_request(
+        client=client,
+        path="urllib3-2.6.2.tar.gz",
+        threshold="high",
+        fail_open=True,
+    )
+
+
+def test_fallback_fail_closed_on_search_error():
+    """Block when search fails and fail_open is False."""
+    client = _FakeClient(
+        response={},
+        search_error=TrustifyError("Search API unavailable"),
+    )
+
+    with pytest.raises(PermissionError, match="Trustify API unavailable"):
+        permit_request(
+            client=client,
+            path="urllib3-2.6.2.tar.gz",
+            threshold="high",
+            fail_open=False,
+        )
+
+
+def test_analyze_preferred_over_fallback():
+    """Use analyze path when it returns results."""
+    response = {
+        "items": [
+            {
+                "purl": "pkg:pypi/requests@2.28.0",
+                "details": [
+                    {
+                        "entry": {"cve": "CVE-2023-1234"},
+                        "base_score": {"severity": "critical"},
+                    }
+                ],
+            }
+        ],
+    }
+    client = _FakeClient(
+        response=response,
+        search_error=AssertionError("fallback should not be called"),
+    )
+
+    with pytest.raises(PermissionError, match="CVE-2023-1234"):
+        permit_request(
+            client=client,
+            path="requests-2.28.0.tar.gz",
+            threshold="critical",
+            fail_open=False,
+        )
+
+
+def test_fallback_respects_severity_threshold():
+    """Allow when search returns CVE below threshold."""
+    search_response = {
+        "items": [
+            {
+                "identifier": "CVE-2026-21441",
+                "title": "urllib3 vulnerable to ...",
+                "description": (
+                    "Starting in version 1.22 and prior to version 2.6.3"
+                ),
+                "average_severity": "medium",
+                "average_score": 5.5,
+                "advisories": [],
+            }
+        ],
+        "total": 1,
+    }
+    client = _FakeClient(
+        response={},
+        search_response=search_response,
+    )
+
+    permit_request(
+        client=client,
+        path="urllib3-2.6.2.tar.gz",
+        threshold="critical",
+        fail_open=False,
+    )
+
+
 @pytest.mark.integration
 def test_permit_allows_clean_package(trustify_client):
     """Allow request for a known-clean package via live Trustify API."""
@@ -182,11 +377,42 @@ def test_permit_allows_clean_package(trustify_client):
 
 @pytest.mark.integration
 def test_permit_blocks_vulnerable_package(trustify_client):
-    """Block request for a known-vulnerable package via live Trustify API."""
+    """Block urllib3@2.6.2 via analyze (OSV-PyPA data)."""
     with pytest.raises(PermissionError):
         permit_request(
             client=trustify_client,
-            path="requests-2.28.0.tar.gz",
-            threshold="critical",
+            path="urllib3-2.6.2.tar.gz",
+            threshold="medium",
             fail_open=False,
         )
+
+
+@pytest.mark.integration
+def test_fallback_blocks_vulnerable_urllib3(
+    trustify_client,
+):
+    """Block vulnerable urllib3 via search fallback."""
+    with pytest.raises(PermissionError):
+        permit_request(
+            client=trustify_client,
+            path="urllib3-2.6.2.tar.gz",
+            threshold="high",
+            fail_open=False,
+        )
+
+
+@pytest.mark.integration
+def test_fallback_allows_fixed_urllib3(
+    trustify_client,
+):
+    """Allow fixed urllib3 via search fallback.
+
+    2.7.0 is the fixed version for CVE-2026-44431 and
+    CVE-2026-44432 (both "From X to before 2.7.0").
+    """
+    permit_request(
+        client=trustify_client,
+        path="urllib3-2.7.0.tar.gz",
+        threshold="high",
+        fail_open=False,
+    )

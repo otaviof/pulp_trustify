@@ -52,3 +52,27 @@ def test_oidc_error_on_invalid_issuer():
         match="Failed to fetch OIDC token",
     ):
         client.analyze(["pkg:pypi/requests@2.28.0"])
+
+
+def test_search_vulnerabilities_connection_failure():
+    client = TrustifyClient(
+        url="https://nonexistent.invalid.domain.local",
+        issuer_url="",
+    )
+    with pytest.raises(
+        TrustifyError,
+        match="Vulnerability search failed",
+    ):
+        client.search_vulnerabilities("urllib3")
+
+
+def test_get_vulnerability_connection_failure():
+    client = TrustifyClient(
+        url="https://nonexistent.invalid.domain.local",
+        issuer_url="",
+    )
+    with pytest.raises(
+        TrustifyError,
+        match="Vulnerability detail fetch failed",
+    ):
+        client.get_vulnerability("CVE-2026-21441")
