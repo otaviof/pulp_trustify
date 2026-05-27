@@ -25,16 +25,30 @@ def upload_gate(sender, instance, **kwargs) -> None:
     """pre_save handler: block uploads of vulnerable packages."""
     from django.conf import settings
 
+    logger.debug(
+        "Upload gate checking '%s'=='%s'",
+        instance.name,
+        instance.version,
+    )
+
     if not getattr(settings, "TRUSTIFY_GATE_UPLOADS", True):
+        logger.debug("Upload gating disabled, skipping")
         return
 
     url = getattr(settings, "TRUSTIFY_URL", "")
     if not url:
+        logger.debug("TRUSTIFY_URL not set, skipping upload gate")
         return
 
     purl = _purl_from_content(instance)
     if purl is None:
+        logger.debug(
+            "Cannot build PURL for '%s', skipping",
+            instance.name or "unknown",
+        )
         return
+
+    logger.debug("Built PURL '%s' for upload", purl)
 
     from pulp_trustify.app.models import _get_client
     from pulp_trustify.gate import gate_purl
@@ -46,7 +60,9 @@ def upload_gate(sender, instance, **kwargs) -> None:
             threshold=settings.TRUSTIFY_SEVERITY_THRESHOLD,
             fail_open=settings.TRUSTIFY_FAIL_OPEN,
         )
+        logger.debug("Upload allowed for '%s'", purl)
     except PermissionError as exc:
+        logger.warning("Upload blocked for '%s': %s", purl, exc)
         raise ValidationError(detail=str(exc)) from exc
 
 
@@ -60,6 +76,7 @@ def connect_signal():
             PythonPackageContent,
         )
     except ImportError:
+        logger.debug("pulp_python not installed, upload gate not connected")
         return
 
     from django.db.models.signals import pre_save
@@ -69,3 +86,4 @@ def connect_signal():
         sender=PythonPackageContent,
         dispatch_uid="trustify_upload_gate",
     )
+    logger.info("Connected upload gate signal for PythonPackageContent")

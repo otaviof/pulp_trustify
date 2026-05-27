@@ -397,6 +397,7 @@ The Operator restarts all pods automatically after patching.
 | `TRUSTIFY_GATE_UPLOADS` | `True` | If `False`, disable upload-time vulnerability checks (download guard still applies) |
 | `TRUSTIFY_SCAN_ENABLED` | `True` | If `False`, disable the scan API endpoint |
 | `TRUSTIFY_BATCH_SIZE` | `100` | Number of PURLs per batch analyze call (scanner only) |
+| `TRUSTIFY_LOG_LEVEL` | `"INFO"` | Log verbosity for the plugin (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) |
 
 All settings are read via Dynaconf. Set them as `PULP_TRUSTIFY_*` env vars on the Pulp pods.
 
@@ -476,4 +477,73 @@ curl -X POST https://trustify.example.com/api/v2/vulnerability/analyze \
 
 # If analyze returns CVE details -> analyze mode active
 # If analyze returns {} -> search fallback mode active
+```
+
+## Logging and Observability
+
+The plugin emits structured logs through Python's standard
+`logging` module, using pulpcore's existing `console` handler
+and `simple` formatter with correlation IDs. No custom handlers
+or formatters are introduced.
+
+### Configuration
+
+Control log verbosity via the `TRUSTIFY_LOG_LEVEL` setting:
+
+```bash
+# Environment variable (recommended for containers)
+PULP_TRUSTIFY_LOG_LEVEL=DEBUG
+
+# Settings file (/etc/pulp/settings.py)
+TRUSTIFY_LOG_LEVEL = "DEBUG"
+```
+
+Valid levels: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
+(default: `INFO`).
+
+### Log Content by Level
+
+| Level | What is logged |
+|:------|:---------------|
+| `DEBUG` | PURL resolution, batch boundaries, API endpoints called, OIDC token refresh, analyze vs. search fallback decisions, parser registration |
+| `INFO` | Scan started/completed, content blocked (with CVE IDs), guard decisions, task dispatch, client initialization, plugin startup |
+| `WARNING` | Fail-open events (Trustify API unreachable), upload rejections, OIDC token fetch failures, API request errors |
+
+### Debug a Blocked Download
+
+```bash
+# Enable debug logging on the content app
+kubectl set env deployment/pulp-content -n pulp \
+  PULP_TRUSTIFY_LOG_LEVEL=DEBUG
+
+# Check logs after triggering a download
+kubectl logs -n pulp deployment/pulp-content \
+  | grep pulp_trustify
+```
+
+Expected output at DEBUG level:
+
+```
+pulp_trustify.guard: Guard checking path: ...
+pulp_trustify.guard: Resolved PURL: pkg:pypi/urllib3@2.6.2
+pulp_trustify.client.client: POST .../analyze with 1 PURLs
+pulp_trustify.gate: PURL pkg:pypi/urllib3@2.6.2 has 2 CVEs ...
+pulp_trustify.gate: Blocking pkg:pypi/urllib3@2.6.2: CVE-...
+```
+
+### Monitor a Scan Task
+
+```bash
+# Scan logs appear in worker logs
+kubectl logs -n pulp deployment/pulp-worker \
+  | grep pulp_trustify
+```
+
+Expected progression:
+
+```
+pulp_trustify...scanner: Scan task started for repository <uuid>
+pulp_trustify...scanner: Scanning content for vulnerabilities
+pulp_trustify.scanner: Processing batch 1/5 (100 PURLs)
+pulp_trustify...scanner: removing 3 vulnerable items
 ```

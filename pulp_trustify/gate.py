@@ -32,6 +32,7 @@ def check_purl(
     Tries analyze first, falls back to search-based
     detection if analyze returns empty results.
     """
+    logger.debug("Checking PURL '%s' against threshold='%s'", purl, threshold)
     try:
         response = client.analyze([purl])
     except TrustifyError as exc:
@@ -47,14 +48,26 @@ def check_purl(
     for item in response.get("items", []):
         all_details.extend(item.get("details", []))
 
+    logger.debug("Analyze returned %d items for '%s'", len(all_details), purl)
+
     if all_details:
         matching = filter_vulnerabilities(all_details, threshold)
         if matching:
-            return [
+            cve_ids = [
                 entry.get("entry", {}).get("cve", "unknown") for entry in matching
             ]
+            logger.info(
+                "PURL '%s' has %d CVEs at or above '%s': %s",
+                purl,
+                len(cve_ids),
+                threshold,
+                ", ".join(cve_ids),
+            )
+            return cve_ids
+        logger.debug("PURL '%s' clean via analyze", purl)
         return []
 
+    logger.debug("Analyze empty for '%s', falling back to search", purl)
     try:
         matching = fallback_search(client, purl, threshold)
     except TrustifyError as exc:
@@ -67,9 +80,15 @@ def check_purl(
         raise PermissionError(MSG_API_UNAVAILABLE) from exc
 
     if matching:
-        return [
+        cve_ids = [
             entry.get("entry", {}).get("cve", "unknown") for entry in matching
         ]
+        logger.info(
+            "PURL '%s' blocked via fallback: %s",
+            purl,
+            ", ".join(cve_ids),
+        )
+        return cve_ids
     return []
 
 
@@ -90,7 +109,9 @@ def gate_purl(
     """
     cve_ids = check_purl(client, purl, threshold, fail_open)
     if cve_ids:
+        logger.info("Blocking '%s': %s", purl, ", ".join(cve_ids))
         raise PermissionError(f"{MSG_BLOCKED_CVE}: {', '.join(cve_ids)}")
+    logger.debug("Allowing '%s' (no CVEs above '%s')", purl, threshold)
 
 
 def fallback_search(

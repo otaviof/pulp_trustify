@@ -15,3 +15,14 @@ TRUSTIFY_FAIL_OPEN = False
 TRUSTIFY_GATE_UPLOADS = True
 TRUSTIFY_SCAN_ENABLED = True
 TRUSTIFY_BATCH_SIZE = 100
+TRUSTIFY_LOG_LEVEL = "INFO"
+
+LOGGING = {
+    "dynaconf_merge": True,
+    "loggers": {
+        "pulp_trustify": {
+            "handlers": ["console"],
+            "level": "@format {this.TRUSTIFY_LOG_LEVEL}",
+        },
+    },
+}

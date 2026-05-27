@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import logging
 import threading
 
 from pulpcore.plugin.models import ContentGuard
 
 from pulp_trustify.client.client import TrustifyClient
 from pulp_trustify.guard import permit_request
+
+logger = logging.getLogger(__name__)
 
 _client: TrustifyClient | None = None
 _client_lock = threading.Lock()
@@ -31,6 +34,10 @@ def _get_client() -> TrustifyClient:
                     issuer_url=settings.TRUSTIFY_ISSUER_URL,
                     ca_bundle=settings.TRUSTIFY_CA_BUNDLE,
                 )
+                logger.info(
+                    "TrustifyClient initialized for '%s'",
+                    settings.TRUSTIFY_URL,
+                )
     return _client
 
 
@@ -49,6 +56,7 @@ class TrustifyGuard(ContentGuard):
         if vulnerabilities exceed the severity threshold."""
         from django.conf import settings
 
+        logger.debug("TrustifyGuard.permit() called")
         permit_request(
             client=_get_client(),
             path=request.path,
@@ -56,5 +64,5 @@ class TrustifyGuard(ContentGuard):
             fail_open=settings.TRUSTIFY_FAIL_OPEN,
         )
 
-    class Meta:
+    class Meta(ContentGuard.Meta):
         default_related_name = "%(app_label)s_%(model_name)s"

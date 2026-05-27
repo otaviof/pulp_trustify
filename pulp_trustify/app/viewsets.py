@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any, cast
 
 from pulpcore.plugin.tasking import dispatch
@@ -15,6 +16,8 @@ from pulp_trustify.app.serializers import (
     ScanSerializer,
     TrustifyGuardSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TrustifyGuardViewSet(ContentGuardViewSet):
@@ -37,6 +40,7 @@ class ScanViewSet(viewsets.ViewSet):
         from rest_framework.exceptions import ValidationError
 
         if not getattr(settings, "TRUSTIFY_SCAN_ENABLED", True):
+            logger.warning("Scan request rejected: scanning disabled")
             raise ValidationError("Scanning is disabled.")
 
         from pulp_trustify.app.tasks import scan_repository
@@ -54,5 +58,7 @@ class ScanViewSet(viewsets.ViewSet):
             exclusive_resources=[repository],
             kwargs={"repository_pk": str(repository.pk)},
         )
+
+        logger.info("Scan dispatched for repository '%s'", repository.pk)
 
         return OperationPostponedResponse(result, request)

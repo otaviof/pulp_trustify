@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import logging
 from typing import Callable
+
+logger = logging.getLogger(__name__)
 
 _parsers: dict[str, Callable[[str], str | None]] = {}
 _content_parsers: dict[str, Callable[[object], str | None]] = {}
@@ -13,6 +16,7 @@ def register(ecosystem: str) -> Callable:
         func: Callable[[str], str | None],
     ) -> Callable[[str], str | None]:
         _parsers[ecosystem] = func
+        logger.debug("Registered PURL parser for ecosystem: '%s'", ecosystem)
         return func
 
     return decorator
@@ -34,6 +38,10 @@ def register_content(ecosystem: str) -> Callable:
         func: Callable[[object], str | None],
     ) -> Callable[[object], str | None]:
         _content_parsers[ecosystem] = func
+        logger.debug(
+            "Registered content-to-PURL parser for ecosystem: '%s'",
+            ecosystem,
+        )
         return func
 
     return decorator

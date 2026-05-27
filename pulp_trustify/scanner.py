@@ -29,11 +29,26 @@ def scan_content(
     batch_size: int = 100,
 ) -> list[ScanResult]:
     """Scan content for vulnerabilities. Returns list of ScanResults."""
+    logger.debug(
+        "Scanning %d PURLs in batches of %d",
+        len(content_purls),
+        batch_size,
+    )
     results: list[ScanResult] = []
+
+    total_batches = (len(content_purls) + batch_size - 1) // batch_size
 
     for i in range(0, len(content_purls), batch_size):
         batch = content_purls[i : i + batch_size]
         batch_purls = [purl for _, purl in batch]
+        batch_num = (i // batch_size) + 1
+
+        logger.debug(
+            "Processing batch %d/%d (%d PURLs)",
+            batch_num,
+            total_batches,
+            len(batch),
+        )
 
         vuln_map, analyzed_purls = _analyze_batch(
             client,
@@ -111,5 +126,12 @@ def _analyze_batch(
                     entry.get("entry", {}).get("cve", "unknown")
                     for entry in matching
                 ]
+
+    logger.debug(
+        "Batch analysis: %d vulnerable, %d analyzed, %d fallback",
+        len(vuln_map),
+        len(analyzed_purls),
+        len(purls) - len(analyzed_purls),
+    )
 
     return vuln_map, analyzed_purls

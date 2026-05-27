@@ -16,8 +16,18 @@ def scan_repository(repository_pk: str) -> None:
     without blocked items."""
     from django.conf import settings
 
+    logger.info("Scan task started for repository '%s'", repository_pk)
+
     if not getattr(settings, "TRUSTIFY_SCAN_ENABLED", True):
+        logger.info("Scanning disabled via TRUSTIFY_SCAN_ENABLED")
         return
+
+    logger.debug(
+        "Scan settings: threshold='%s', fail_open=%s, batch_size=%d",
+        settings.TRUSTIFY_SEVERITY_THRESHOLD,
+        settings.TRUSTIFY_FAIL_OPEN,
+        settings.TRUSTIFY_BATCH_SIZE,
+    )
 
     from pulp_trustify.app.models import _get_client
 
@@ -26,7 +36,7 @@ def scan_repository(repository_pk: str) -> None:
 
     if latest_version is None:
         logger.info(
-            "Repository %s has no content, skipping scan",
+            "Repository '%s' has no content, skipping scan",
             repository.pk,
         )
         return
@@ -34,8 +44,14 @@ def scan_repository(repository_pk: str) -> None:
     content_list = list(latest_version.content.all())
     content_purls = _enumerate_content(content_list)
 
+    logger.debug(
+        "Enumerated %d content items, %d with PURLs",
+        len(content_list),
+        len(content_purls),
+    )
+
     if not content_purls:
-        logger.info("No scannable content in repository %s", repository.pk)
+        logger.info("No scannable content in repository '%s'", repository.pk)
         return
 
     logger.info(PROGRESS_SCANNING)
@@ -52,7 +68,7 @@ def scan_repository(repository_pk: str) -> None:
 
     if not blocked_pks:
         logger.info(
-            "No vulnerable content found in repository %s",
+            "No vulnerable content found in repository '%s'",
             repository.pk,
         )
         return

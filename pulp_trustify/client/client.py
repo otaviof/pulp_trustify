@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import ssl
 import threading
 import time
@@ -8,6 +9,8 @@ from typing import Any, Protocol, runtime_checkable
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.ssl_ import create_urllib3_context
+
+logger = logging.getLogger(__name__)
 
 
 @runtime_checkable
@@ -71,6 +74,7 @@ class TrustifyClient:
 
     def _fetch_token(self) -> tuple[str, float]:
         token_url = f"{self._issuer_url}/protocol/openid-connect/token"
+        logger.debug("Fetching OIDC token from '%s'", token_url)
         try:
             response = self._session.post(
                 token_url,
@@ -85,8 +89,10 @@ class TrustifyClient:
             data = response.json()
             expires_in = data.get("expires_in", 300)
             expiry = time.monotonic() + expires_in - 30
+            logger.debug("OIDC token refreshed, expires in %ds", expires_in)
             return data["access_token"], expiry
         except requests.RequestException as exc:
+            logger.warning("OIDC token fetch failed: %s", exc)
             raise TrustifyError(f"Failed to fetch OIDC token: {exc}") from exc
 
     def _get_headers(self) -> dict[str, str]:
@@ -113,6 +119,7 @@ class TrustifyClient:
 
     def analyze(self, purls: list[str]) -> dict[str, Any]:
         endpoint = f"{self._url}/api/{self._api_version}/vulnerability/analyze"
+        logger.debug("POST '%s' with %d PURLs", endpoint, len(purls))
         try:
             response = self._session.post(
                 endpoint,
@@ -121,8 +128,12 @@ class TrustifyClient:
                 timeout=30,
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            items_count = len(result.get("items", []))
+            logger.debug("Analyze response: %d items", items_count)
+            return result
         except requests.RequestException as exc:
+            logger.warning("Trustify API request failed: %s", exc)
             raise TrustifyError(f"Trustify API request failed: {exc}") from exc
 
     def search_vulnerabilities(
@@ -132,6 +143,7 @@ class TrustifyClient:
         limit: int = 10,
     ) -> dict[str, Any]:
         endpoint = f"{self._url}/api/{self._api_version}/vulnerability"
+        logger.debug("GET '%s' q='%s'", endpoint, query)
         try:
             response = self._session.get(
                 endpoint,
@@ -144,8 +156,12 @@ class TrustifyClient:
                 timeout=30,
             )
             response.raise_for_status()
-            return response.json()
+            result = response.json()
+            items_count = len(result.get("items", []))
+            logger.debug("Search response: %d items", items_count)
+            return result
         except requests.RequestException as exc:
+            logger.warning("Vulnerability search failed: %s", exc)
             raise TrustifyError(f"Vulnerability search failed: {exc}") from exc
 
     def get_vulnerability(self, identifier: str) -> dict[str, Any]:
@@ -161,6 +177,7 @@ class TrustifyClient:
             response.raise_for_status()
             return response.json()
         except requests.RequestException as exc:
+            logger.warning("Vulnerability detail fetch failed: %s", exc)
             raise TrustifyError(
                 f"Vulnerability detail fetch failed: {exc}"
             ) from exc
