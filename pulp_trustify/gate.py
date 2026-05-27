@@ -20,6 +20,59 @@ MSG_API_UNAVAILABLE = "Trustify API unavailable"
 MSG_BLOCKED_CVE = "Blocked due to CVE"
 
 
+def check_purl(
+    client: VulnerabilityChecker,
+    purl: str,
+    threshold: str,
+    fail_open: bool,
+) -> list[str]:
+    """Check a PURL against Trustify. Returns list of CVE IDs above
+    threshold.
+
+    Tries analyze first, falls back to search-based
+    detection if analyze returns empty results.
+    """
+    try:
+        response = client.analyze([purl])
+    except TrustifyError as exc:
+        if fail_open:
+            logger.warning(
+                "Trustify analysis failed (fail_open=True): %s",
+                exc,
+            )
+            return []
+        raise PermissionError(MSG_API_UNAVAILABLE) from exc
+
+    all_details: list[dict] = []
+    for item in response.get("items", []):
+        all_details.extend(item.get("details", []))
+
+    if all_details:
+        matching = filter_vulnerabilities(all_details, threshold)
+        if matching:
+            return [
+                entry.get("entry", {}).get("cve", "unknown") for entry in matching
+            ]
+        return []
+
+    try:
+        matching = fallback_search(client, purl, threshold)
+    except TrustifyError as exc:
+        if fail_open:
+            logger.warning(
+                "Trustify search fallback failed (fail_open=True): %s",
+                exc,
+            )
+            return []
+        raise PermissionError(MSG_API_UNAVAILABLE) from exc
+
+    if matching:
+        return [
+            entry.get("entry", {}).get("cve", "unknown") for entry in matching
+        ]
+    return []
+
+
 def gate_purl(
     client: VulnerabilityChecker,
     purl: str,
@@ -35,45 +88,8 @@ def gate_purl(
         PermissionError: if the PURL has vulnerabilities
             at or above threshold.
     """
-    try:
-        response = client.analyze([purl])
-    except TrustifyError as exc:
-        if fail_open:
-            logger.warning(
-                "Trustify analysis failed (fail_open=True): %s",
-                exc,
-            )
-            return
-        raise PermissionError(MSG_API_UNAVAILABLE) from exc
-
-    all_details: list[dict] = []
-    for item in response.get("items", []):
-        all_details.extend(item.get("details", []))
-
-    if all_details:
-        matching = filter_vulnerabilities(all_details, threshold)
-        if matching:
-            cve_ids = [
-                entry.get("entry", {}).get("cve", "unknown") for entry in matching
-            ]
-            raise PermissionError(f"{MSG_BLOCKED_CVE}: {', '.join(cve_ids)}")
-        return
-
-    try:
-        matching = fallback_search(client, purl, threshold)
-    except TrustifyError as exc:
-        if fail_open:
-            logger.warning(
-                "Trustify search fallback failed (fail_open=True): %s",
-                exc,
-            )
-            return
-        raise PermissionError(MSG_API_UNAVAILABLE) from exc
-
-    if matching:
-        cve_ids = [
-            entry.get("entry", {}).get("cve", "unknown") for entry in matching
-        ]
+    cve_ids = check_purl(client, purl, threshold, fail_open)
+    if cve_ids:
         raise PermissionError(f"{MSG_BLOCKED_CVE}: {', '.join(cve_ids)}")
 
 

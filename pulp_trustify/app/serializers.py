@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from pulpcore.plugin.models import Repository
 from pulpcore.plugin.serializers import ContentGuardSerializer
+from rest_framework import serializers
 
 from pulp_trustify.app.models import TrustifyGuard
 
@@ -11,3 +13,19 @@ class TrustifyGuardSerializer(ContentGuardSerializer):
     class Meta:
         model = TrustifyGuard
         fields = ContentGuardSerializer.Meta.fields
+
+
+class ScanSerializer(serializers.Serializer):
+    """Serializer for scan endpoint."""
+
+    repository = serializers.CharField(
+        help_text="Repository href to scan.",
+        required=True,
+    )
+
+    def validate_repository(self, value):
+        pk = value.rstrip("/").split("/")[-1]
+        try:
+            return Repository.objects.get(pk=pk)
+        except Repository.DoesNotExist:
+            raise serializers.ValidationError(f"Repository not found: {value}")

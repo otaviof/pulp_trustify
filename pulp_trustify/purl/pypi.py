@@ -10,7 +10,7 @@ from packaging.utils import (
     parse_wheel_filename,
 )
 
-from pulp_trustify.purl import register
+from pulp_trustify.purl import register, register_content
 
 
 def _normalize(name: str) -> str:
@@ -36,3 +36,12 @@ def parse_pypi_url(path: str) -> str | None:
             return None
 
     return None
+
+
+@register_content("pypi")
+def parse_pypi_content(content: object) -> str | None:
+    name = getattr(content, "name", None)
+    version = getattr(content, "version", None)
+    if not name or not version:
+        return None
+    return f"pkg:pypi/{_normalize(name)}@{version}"

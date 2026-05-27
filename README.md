@@ -1,15 +1,71 @@
 # `pulp_trustify`
 
-Pulp plugin integrating [Trustify](https://trustify.dev/) CVE intelligence for vulnerability-gated artifact serving. The plugin provides two gating mechanisms:
+Pulp plugin integrating [Trustify](https://trustify.dev/) CVE intelligence for vulnerability-gated artifact serving. The plugin provides three complementary protection mechanisms:
 
 1. **Download Guard**: A `ContentGuard` that blocks downloads of vulnerable packages
 2. **Upload Gate**: A pre-save signal handler that blocks uploads of vulnerable packages
+3. **Scanner**: A dispatched task that removes vulnerable artifacts from existing repositories
 
-Both use the same dual-mode detection (analyze + search fallback) and share the severity threshold configuration.
+All three use the same dual-mode detection (analyze + search fallback) and share the severity threshold configuration.
+
+## Architecture Overview
+
+```mermaid
+flowchart TD
+    subgraph "Protection Layers"
+        A["Download Guard<br/>(real-time blocking)"]
+        B["Upload Gate<br/>(upload-time blocking)"]
+        C["Scanner<br/>(periodic sweep)"]
+    end
+    
+    subgraph "Coverage Timeline"
+        D["Before plugin deployed:<br/>vulnerable content cached"]
+        E["After plugin deployed:<br/>future operations blocked"]
+        F["Scanner run:<br/>historic content cleaned"]
+    end
+    
+    A -.blocks.-> G["Client downloads"]
+    B -.blocks.-> H["Client uploads"]
+    C -.removes.-> D
+    
+    A --> I["Trustify Detection<br/>(analyze + search)"]
+    B --> I
+    C --> I
+```
+
+**Guard** and **Upload Gate** are reactive (per-request blocking). **Scanner** is proactive (repository-wide sweep). Together they provide complete coverage:
+
+- **Past:** Scanner cleans up content cached before the plugin was deployed
+- **Present:** Guard blocks downloads of vulnerable packages right now
+- **Future:** Upload Gate prevents new vulnerable packages from entering
+
+All three mechanisms share the same detection logic and severity threshold.
 
 ## How It Works
 
 ### Download Guard
+
+```mermaid
+sequenceDiagram
+    participant C as Client (pip)
+    participant P as Pulp Content App
+    participant G as TrustifyGuard
+    participant T as Trustify
+
+    C->>P: GET /pulp/content/dist/urllib3-2.6.2.whl
+    P->>G: permit(request)
+    G->>G: Extract PURL from path
+    G->>T: POST /api/v2/vulnerability/analyze<br/>["pkg:pypi/urllib3@2.6.2"]
+    T-->>G: CVE details (analyze mode)<br/>OR empty (triggers search fallback)
+    G->>G: Filter by severity threshold
+    alt Vulnerable
+        G-->>P: Deny (raise PermissionError)
+        P-->>C: 403 Forbidden
+    else Clean
+        G-->>P: Permit
+        P-->>C: 200 OK + artifact
+    end
+```
 
 1. A client requests a package download (e.g., `pip install`)
 2. Pulp's Content App invokes `TrustifyGuard.permit(request)`
@@ -21,6 +77,28 @@ Both use the same dual-mode detection (analyze + search fallback) and share the 
    `403 Forbidden`
 
 ### Upload Gate
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as Pulp API
+    participant S as pre_save Signal
+    participant T as Trustify
+
+    C->>A: POST /api/v3/content/python/packages/<br/>{name: "urllib3", version: "2.6.2", ...}
+    A->>S: pre_save(PythonPackageContent)
+    S->>S: Build PURL from name/version
+    S->>T: POST /api/v2/vulnerability/analyze<br/>["pkg:pypi/urllib3@2.6.2"]
+    T-->>S: CVE details (analyze mode)<br/>OR empty (triggers search fallback)
+    S->>S: Filter by severity threshold
+    alt Vulnerable
+        S-->>A: Raise ValidationError
+        A-->>C: 400 Bad Request
+    else Clean
+        S-->>A: Continue save
+        A-->>C: 201 Created
+    end
+```
 
 1. A client uploads a Python package via the Pulp API
 2. Django's `pre_save` signal fires before creating `PythonPackageContent`
@@ -34,6 +112,112 @@ Both use the same dual-mode detection (analyze + search fallback) and share the 
 - Does not apply to packages imported via `pulp_python` sync tasks (uses `bulk_create()`, which bypasses Django signals)
 - Adds latency to each upload (30s timeout per Trustify query)
 - Requires `pulp_python` to be installed (gracefully disabled otherwise)
+
+### Scanner
+
+```mermaid
+flowchart TD
+    A["Operator triggers scan:<br/>POST /api/v3/trustify/scan/"] --> B["Pulp dispatches<br/>scan_repository task"]
+    B --> C["Enumerate content<br/>from latest repo version"]
+    C --> D["Build PURLs from<br/>content metadata"]
+    D --> E["Batch PURLs<br/>(TRUSTIFY_BATCH_SIZE)"]
+    E --> F["POST /api/v2/vulnerability/analyze"]
+    F --> G{"Analyze<br/>returned data?"}
+    G -- yes --> H["Filter by severity<br/>threshold"]
+    G -- no --> I["Fallback: per-PURL<br/>check_purl()"]
+    I --> H
+    H --> J{"Vulnerable<br/>content found?"}
+    J -- yes --> K["Create new repo version<br/>with vulnerable content removed"]
+    J -- no --> L["No-op<br/>(no version created)"]
+    K --> M["Report results"]
+    L --> M
+```
+
+The Scanner is a Pulp dispatched task that proactively walks repository content and removes vulnerable artifacts by creating new immutable repository versions.
+
+**When to use:**
+
+- Clean up content cached **before** the plugin was deployed
+- Remove packages whose CVE was disclosed **after** they were cached
+- Periodic repository hygiene (automated via cron or operator schedules)
+
+**How it works:**
+
+1. Operator triggers scan via REST API (or dispatch directly)
+2. Task enumerates all content in the repository's latest version
+3. Builds PURLs from content metadata (name/version fields)
+4. Queries Trustify in batches (default: 100 PURLs per API call)
+5. Uses analyze mode first, falls back to search for packages without
+   OSV data
+6. Creates a new repository version **excluding** vulnerable artifacts
+7. If no vulnerabilities found, completes without creating a version
+
+**Key differences from Guard/Gate:**
+
+- **Scope:** Entire repository vs. single request
+- **Timing:** Periodic/on-demand vs. real-time
+- **Action:** Removes artifacts vs. blocks access
+- **Performance:** Batch API calls vs. per-request calls
+
+The Scanner shares the exact same detection pipeline as the Guard
+and Upload Gate (`check_purl()` → analyze + search fallback).
+
+**Triggering a scan:**
+
+```bash
+curl -X POST https://pulp.example.com/api/v3/trustify/scan/ \
+  -u admin:<password> \
+  -H "Content-Type: application/json" \
+  -d '{
+    "repository": "/api/v3/repositories/python/python/<uuid>/"
+  }'
+```
+
+Response:
+
+```json
+{
+  "task": "/api/v3/tasks/018f-1234-5678-90ab/"
+}
+```
+
+**Monitoring scan progress:**
+
+```bash
+# Poll the task
+curl https://pulp.example.com/api/v3/tasks/018f-1234-5678-90ab/ \
+  -u admin:<password>
+
+# Check progress reports
+curl https://pulp.example.com/api/v3/tasks/018f-1234-5678-90ab/ \
+  -u admin:<password> | jq '.progress_reports'
+```
+
+Progress reports:
+
+| Phase | Message | Indicates |
+|:------|:--------|:----------|
+| Scanning | `"Scanning content for vulnerabilities"` | Trustify queries in progress |
+| Removing | `"Removing vulnerable content"` | New repository version being created |
+
+**After scan completion:**
+
+```bash
+# View repository versions
+curl https://pulp.example.com/api/v3/repositories/python/python/<uuid>/versions/ \
+  -u admin:<password>
+
+# Check removed content in the new version
+curl https://pulp.example.com/api/v3/repositories/python/python/<uuid>/versions/<version-number>/removed_content/ \
+  -u admin:<password>
+```
+
+**Limitations:**
+
+- Currently supports PyPI packages only (extensible via PURL registry)
+- Scans the entire latest version (no incremental scanning)
+- Requires exclusive lock on repository (blocks concurrent syncs/scans)
+- Controlled by `TRUSTIFY_SCAN_ENABLED` setting (default: `True`)
 
 ### Detection Modes
 
@@ -140,8 +324,8 @@ The plugin needs three things on the cluster: the custom image, a CA bundle for 
 
 **Component Requirements**:
 - **Content App**: Needs settings for download guard
-- **API**: Needs settings for API views (if any)
-- **Worker**: Needs settings for upload gate (upload processing happens here)
+- **API**: Needs settings for scan endpoint
+- **Worker**: Needs settings for upload gate and scanner task
 
 #### Create the CA ConfigMap
 
@@ -211,6 +395,8 @@ The Operator restarts all pods automatically after patching.
 | `TRUSTIFY_SEVERITY_THRESHOLD` | `"critical"` | Minimum severity to block (`low`, `medium`, `high`, `critical`) |
 | `TRUSTIFY_FAIL_OPEN` | `False` | If `True`, allow downloads/uploads when Trustify API calls fail (applies to both analyze and search fallback modes) |
 | `TRUSTIFY_GATE_UPLOADS` | `True` | If `False`, disable upload-time vulnerability checks (download guard still applies) |
+| `TRUSTIFY_SCAN_ENABLED` | `True` | If `False`, disable the scan API endpoint |
+| `TRUSTIFY_BATCH_SIZE` | `100` | Number of PURLs per batch analyze call (scanner only) |
 
 All settings are read via Dynaconf. Set them as `PULP_TRUSTIFY_*` env vars on the Pulp pods.
 
@@ -259,6 +445,22 @@ curl -o /dev/null -w "%{http_code}" \
 # Download a fixed package (should return 200)
 curl -o /dev/null -w "%{http_code}" \
   https://pulp.example.com/pulp/content/<dist>/urllib3-2.7.0-py3-none-any.whl
+
+# Test scanner: trigger a repository scan
+curl -X POST https://pulp.example.com/api/v3/trustify/scan/ \
+  -u admin:<password> \
+  -H "Content-Type: application/json" \
+  -d '{"repository": "/api/v3/repositories/python/python/<uuid>/"}'
+# Expected: 202 Accepted with task href
+
+# Monitor the scan task
+curl https://pulp.example.com/api/v3/tasks/<task-uuid>/ \
+  -u admin:<password> | jq '.state, .progress_reports'
+# Expected: state="completed", progress shows scanning phases
+
+# Verify new repository version was created (if vulnerable content found)
+curl https://pulp.example.com/api/v3/repositories/python/python/<uuid>/versions/ \
+  -u admin:<password> | jq '.results[0] | {number, removed_count}'
 ```
 
 #### Verify Detection Mode

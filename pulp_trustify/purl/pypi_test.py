@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 import pulp_trustify.purl.pypi  # noqa: F401
-from pulp_trustify.purl import url_to_purl
+from pulp_trustify.purl import content_to_purl, url_to_purl
 
 
 @pytest.mark.parametrize(
@@ -51,3 +53,30 @@ def test_mixed_separators_normalize():
     url = "my_long.package_name-2.0.0.tar.gz"
     expected = "pkg:pypi/my-long-package-name@2.0.0"
     assert url_to_purl(url) == expected
+
+
+@pytest.mark.parametrize(
+    "content,expected",
+    [
+        (
+            SimpleNamespace(name="requests", version="2.28.0"),
+            "pkg:pypi/requests@2.28.0",
+        ),
+        (
+            SimpleNamespace(name="My_Package", version="1.0"),
+            "pkg:pypi/my-package@1.0",
+        ),
+        (SimpleNamespace(name=None, version="1.0"), None),
+        (SimpleNamespace(name="pkg", version=None), None),
+        (SimpleNamespace(name="", version="1.0"), None),
+        (SimpleNamespace(name="pkg", version=""), None),
+    ],
+)
+def test_content_to_purl_parametrized(content, expected):
+    """Test content-to-PURL conversion for various inputs."""
+    assert content_to_purl(content) == expected
+
+
+def test_content_to_purl_no_attributes():
+    """Return None when content object has no name/version."""
+    assert content_to_purl(object()) is None
