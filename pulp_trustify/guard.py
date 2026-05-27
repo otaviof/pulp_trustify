@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from pulp_trustify.client.client import TrustifyClient
+from pulp_trustify.client.client import VulnerabilityChecker
 from pulp_trustify.gate import gate_purl
 from pulp_trustify.purl import url_to_purl
 
 
 def permit_request(
-    client: TrustifyClient,
+    client: VulnerabilityChecker,
     path: str,
     threshold: str,
     fail_open: bool,

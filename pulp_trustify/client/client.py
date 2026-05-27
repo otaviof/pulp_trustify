@@ -3,10 +3,25 @@ from __future__ import annotations
 import ssl
 import threading
 import time
+from typing import Protocol, runtime_checkable
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.ssl_ import create_urllib3_context
+
+
+@runtime_checkable
+class VulnerabilityChecker(Protocol):
+    """Structural interface for vulnerability checking."""
+
+    def analyze(self, purls: list[str]) -> dict: ...
+
+    def search_vulnerabilities(
+        self,
+        query: str,
+        offset: int = ...,
+        limit: int = ...,
+    ) -> dict: ...
 
 
 class _CAAdapter(HTTPAdapter):

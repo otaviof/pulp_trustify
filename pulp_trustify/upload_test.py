@@ -27,7 +27,7 @@ def _make_instance(name="test-pkg", version="1.0.0"):
 def _fake_models():
     """Build fake pulp_trustify.app.models module."""
     mod = ModuleType("pulp_trustify.app.models")
-    mod._get_client = MagicMock()
+    setattr(mod, "_get_client", MagicMock())
     return mod
 
 
@@ -39,7 +39,7 @@ def _fake_models():
 @patch("django.conf.settings", _make_settings())
 def test_blocks_vulnerable_upload(mock_gate):
     """Raise ValidationError on PermissionError from gate."""
-    from django.core.exceptions import ValidationError
+    from rest_framework.exceptions import ValidationError
 
     from pulp_trustify.upload import upload_gate
 

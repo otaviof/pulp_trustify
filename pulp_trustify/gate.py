@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import logging
 
-from pulp_trustify.client.client import TrustifyClient, TrustifyError
+from pulp_trustify.client.client import (
+    TrustifyError,
+    VulnerabilityChecker,
+)
 from pulp_trustify.policy import filter_vulnerabilities
 from pulp_trustify.version import (
     extract_version_ranges,
@@ -18,7 +21,7 @@ MSG_BLOCKED_CVE = "Blocked due to CVE"
 
 
 def gate_purl(
-    client: TrustifyClient,
+    client: VulnerabilityChecker,
     purl: str,
     threshold: str,
     fail_open: bool,
@@ -75,7 +78,7 @@ def gate_purl(
 
 
 def fallback_search(
-    client: TrustifyClient,
+    client: VulnerabilityChecker,
     purl: str,
     threshold: str,
 ) -> list[dict]:

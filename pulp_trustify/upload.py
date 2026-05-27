@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 
-from django.core.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ def upload_gate(sender, instance, **kwargs) -> None:
             fail_open=settings.TRUSTIFY_FAIL_OPEN,
         )
     except PermissionError as exc:
-        raise ValidationError(str(exc)) from exc
+        raise ValidationError(detail=str(exc)) from exc
 
 
 def connect_signal():
@@ -56,7 +56,7 @@ def connect_signal():
     Gracefully handles missing pulp_python.
     """
     try:
-        from pulp_python.app.models import (
+        from pulp_python.app.models import (  # type: ignore[import-not-found]
             PythonPackageContent,
         )
     except ImportError:
