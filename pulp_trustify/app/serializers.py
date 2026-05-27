@@ -10,9 +10,8 @@ from pulp_trustify.app.models import TrustifyGuard
 class TrustifyGuardSerializer(ContentGuardSerializer):
     """Serializer for the TrustifyGuard model."""
 
-    class Meta:
+    class Meta(ContentGuardSerializer.Meta):
         model = TrustifyGuard
-        fields = ContentGuardSerializer.Meta.fields
 
 
 class ScanSerializer(serializers.Serializer):

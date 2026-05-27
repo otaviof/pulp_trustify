@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 from pulpcore.plugin.tasking import dispatch
 from pulpcore.plugin.viewsets import (
     ContentGuardFilter,
@@ -44,7 +46,8 @@ class ScanViewSet(viewsets.ViewSet):
         )
         serializer.is_valid(raise_exception=True)
 
-        repository = serializer.validated_data["repository"]
+        data = cast(dict[str, Any], serializer.validated_data)
+        repository = data["repository"]
 
         result = dispatch(
             scan_repository,

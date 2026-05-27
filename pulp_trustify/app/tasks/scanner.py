@@ -74,10 +74,15 @@ def _get_repository(pk: str):
     from pulpcore.plugin.models import Repository
 
     try:
-        from pulp_python.app.models import PythonRepository
+        from pulp_python.app.models import (  # type: ignore[import-not-found]
+            PythonRepository,
+        )
+    except ImportError:
+        return Repository.objects.get(pk=pk)
 
+    try:
         return PythonRepository.objects.get(pk=pk)
-    except (ImportError, PythonRepository.DoesNotExist):
+    except PythonRepository.DoesNotExist:
         return Repository.objects.get(pk=pk)
 
 

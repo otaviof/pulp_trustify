@@ -19,9 +19,9 @@ def _fake_pulpcore():
     mod = ModuleType("pulpcore")
     plugin = ModuleType("pulpcore.plugin")
     models = ModuleType("pulpcore.plugin.models")
-    models.Repository = MagicMock()
-    plugin.models = models
-    mod.plugin = plugin
+    setattr(models, "Repository", MagicMock())
+    setattr(plugin, "models", models)
+    setattr(mod, "plugin", plugin)
     return {
         "pulpcore": mod,
         "pulpcore.plugin": plugin,
@@ -33,9 +33,9 @@ def _fake_pulp_python():
     mod = ModuleType("pulp_python")
     app = ModuleType("pulp_python.app")
     models = ModuleType("pulp_python.app.models")
-    models.PythonRepository = MagicMock()
-    app.models = models
-    mod.app = app
+    setattr(models, "PythonRepository", MagicMock())
+    setattr(app, "models", models)
+    setattr(mod, "app", app)
     return {
         "pulp_python": mod,
         "pulp_python.app": app,

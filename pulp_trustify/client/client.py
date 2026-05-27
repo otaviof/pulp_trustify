@@ -3,7 +3,7 @@ from __future__ import annotations
 import ssl
 import threading
 import time
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -14,14 +14,14 @@ from urllib3.util.ssl_ import create_urllib3_context
 class VulnerabilityChecker(Protocol):
     """Structural interface for vulnerability checking."""
 
-    def analyze(self, purls: list[str]) -> dict: ...
+    def analyze(self, purls: list[str]) -> dict[str, Any]: ...
 
     def search_vulnerabilities(
         self,
         query: str,
         offset: int = ...,
         limit: int = ...,
-    ) -> dict: ...
+    ) -> dict[str, Any]: ...
 
 
 class _CAAdapter(HTTPAdapter):
@@ -111,7 +111,7 @@ class TrustifyClient:
                 headers["Authorization"] = f"Bearer {self._token}"
         return headers
 
-    def analyze(self, purls: list[str]) -> dict:
+    def analyze(self, purls: list[str]) -> dict[str, Any]:
         endpoint = f"{self._url}/api/{self._api_version}/vulnerability/analyze"
         try:
             response = self._session.post(
@@ -130,7 +130,7 @@ class TrustifyClient:
         query: str,
         offset: int = 0,
         limit: int = 10,
-    ) -> dict:
+    ) -> dict[str, Any]:
         endpoint = f"{self._url}/api/{self._api_version}/vulnerability"
         try:
             response = self._session.get(
@@ -148,7 +148,7 @@ class TrustifyClient:
         except requests.RequestException as exc:
             raise TrustifyError(f"Vulnerability search failed: {exc}") from exc
 
-    def get_vulnerability(self, identifier: str) -> dict:
+    def get_vulnerability(self, identifier: str) -> dict[str, Any]:
         endpoint = (
             f"{self._url}/api/{self._api_version}/vulnerability/{identifier}"
         )

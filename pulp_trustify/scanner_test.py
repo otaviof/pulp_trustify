@@ -19,12 +19,12 @@ class _FakeClient:
         self._analyze_error = analyze_error
         self._search_response = search_response
 
-    def analyze(self, _purls):
+    def analyze(self, purls):
         if self._analyze_error:
             raise self._analyze_error
         return self._analyze_response or {"items": []}
 
-    def search_vulnerabilities(self, _query, offset=0, limit=10):
+    def search_vulnerabilities(self, query, offset=0, limit=10):
         return self._search_response or {"items": [], "total": 0}
 
 
@@ -295,8 +295,8 @@ def test_multiple_batches(mock_check):
 
     calls = []
 
-    def mock_analyze(_purls):
-        calls.append(len(_purls))
+    def mock_analyze(purls):
+        calls.append(len(purls))
         return {"items": []}
 
     client.analyze = mock_analyze
