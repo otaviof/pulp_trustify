@@ -94,6 +94,23 @@ addopts = ["--import-mode=importlib"]
 # Poe the Poet — task runner
 #
 
+[tool.poe]
+envfile = ".env"
+
+# container build and deployment variables.
+[tool.poe.env.IMAGE_REPOSITORY]
+default = "ghcr.io"
+[tool.poe.env.IMAGE_NAMESPACE]
+default = "otaviof"
+[tool.poe.env.IMAGE_NAME]
+default = "pulp_trustify"
+[tool.poe.env.IMAGE_TAG]
+default = "latest"
+[tool.poe.env.IMAGE]
+default = "${IMAGE_REPOSITORY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:${IMAGE_TAG}"
+[tool.poe.env.CONTAINER_RUNTIME]
+default = "podman"
+
 [tool.poe.tasks]
 # run ruff linter checks
 lint = "ruff check ."
@@ -113,16 +130,17 @@ help = "run unit tests (excludes integration)"
 sequence = ["lint", "fmt-check", "test"]
 help = "run all CI checks (lint, format, test)"
 
-[tool.poe.env]
-IMAGE_REPOSITORY = "registry.rachael.home.lan"
-IMAGE_NAMESPACE = "pulp-trustify"
-IMAGE_TAG = "latest"
-IMAGE = "${IMAGE_REPOSITORY}/${IMAGE_NAMESPACE}:${IMAGE_TAG}"
-
+# builds the container image.
 [tool.poe.tasks.image-build]
-cmd = "podman build -t ${IMAGE} -f Containerfile ."
+cmd = "${CONTAINER_RUNTIME} build -t ${IMAGE} -f Containerfile ."
 help = "build the plugin container image"
 
+# pushes the container image.
 [tool.poe.tasks.image-push]
-cmd = "podman push ${IMAGE} --tls-verify=false"
+cmd = "${CONTAINER_RUNTIME} push ${IMAGE} --tls-verify=false"
 help = "push the plugin image to the dev registry"
+
+# perform the deployment for testing and CI environments.
+[tool.poe.tasks.deploy]
+cmd = "deploy/deploy.py"
+help = "provision secrets and patch the Pulp CR"

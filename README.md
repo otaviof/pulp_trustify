@@ -273,116 +273,21 @@ The guard works immediately with only the CVE importer active (fallback mode), b
 
 ## Development
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-### Tasks
-
-All project tasks are managed via [Poe the Poet](https://poethepoet.naez.com/):
-
-| Task | Command | Description |
-|:-----|:--------|:------------|
-| Lint | `poe lint` | Run ruff linter checks |
-| Fix | `poe fix` | Auto-fix lint violations |
-| Format check | `poe fmt-check` | Verify code formatting |
-| Format | `poe fmt` | Apply code formatting |
-| Test | `poe test` | Run unit tests |
-| **All checks** | `poe check` | Lint + format + test |
-| Image build | `poe image-build` | Build the plugin container image |
-| Image push | `poe image-push` | Push to the dev registry |
-
-### Test Layout
-
-Unit tests live side-by-side with source files using `*_test.py` naming (e.g., `guard.py` and `guard_test.py`). Integration tests are marked with `@pytest.mark.integration` and require network access plus a `.env` file with Trustify credentials.
-
-```bash
-# Run integration tests
-pytest -m integration
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, testing, and pull request guidelines.
 
 ## Deployment
 
-The plugin ships as a container image extending `pulp/pulp-minimal`. All Pulp components (API, Content App, Worker) use this same image — the Pulp Operator manages entrypoints.
-
-### 1. Build and Push the Image
+The plugin ships as a container image extending `pulp/pulp-minimal`. Deploy with:
 
 ```bash
 poe image-build
 poe image-push
+poe deploy
 ```
 
-The image reference is configured in `pyproject.toml` under `[tool.poe.env]` (`IMAGE_REPOSITORY`, `IMAGE_NAMESPACE`, `IMAGE_TAG`).
+See [deploy/README.md](deploy/README.md) for environment variables, script flags, and troubleshooting.
 
-### 2. Configure the Pulp Operator
-
-The plugin needs three things on the cluster: the custom image, a CA bundle for internal TLS, and Trustify connection settings via `PULP_`-prefixed env vars (read by Dynaconf at runtime).
-
-**Note**: The upload gate activates automatically when `pulp_python` is installed. No additional configuration is needed beyond the settings below. To disable upload gating, set `PULP_TRUSTIFY_GATE_UPLOADS=false`.
-
-**Component Requirements**:
-- **Content App**: Needs settings for download guard
-- **API**: Needs settings for scan endpoint
-- **Worker**: Needs settings for upload gate and scanner task
-
-#### Create the CA ConfigMap
-
-```bash
-kubectl create configmap trustify-ca-bundle -n pulp \
-  --from-file=ca-bundle.crt=tmp/lan-ca.crt
-```
-
-#### Patch the Pulp CR
-
-```bash
-kubectl patch pulp pulp -n pulp --type merge -p '{
-  "spec": {
-    "image": "registry.rachael.home.lan/pulp-trustify",
-    "image_version": "latest",
-    "mount_trusted_ca": true,
-    "mount_trusted_ca_configmap_key": "trustify-ca-bundle:ca-bundle.crt",
-    "content": {
-      "env_vars": [
-        {"name": "PULP_TRUSTIFY_URL", "value": "https://trustify.rachael.home.lan"},
-        {"name": "PULP_TRUSTIFY_ISSUER_URL", "value": "https://sso.rachael.home.lan/realms/trustify"},
-        {"name": "PULP_TRUSTIFY_CLIENT_ID", "value": "cli"},
-        {"name": "PULP_TRUSTIFY_CLIENT_SECRET", "value": "<secret>"},
-        {"name": "PULP_TRUSTIFY_SEVERITY_THRESHOLD", "value": "critical"},
-        {"name": "PULP_TRUSTIFY_FAIL_OPEN", "value": "false"},
-        {"name": "PULP_TRUSTIFY_CA_BUNDLE", "value": "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"}
-      ]
-    },
-    "api": {
-      "env_vars": [
-        {"name": "PULP_TRUSTIFY_URL", "value": "https://trustify.rachael.home.lan"},
-        {"name": "PULP_TRUSTIFY_ISSUER_URL", "value": "https://sso.rachael.home.lan/realms/trustify"},
-        {"name": "PULP_TRUSTIFY_CLIENT_ID", "value": "cli"},
-        {"name": "PULP_TRUSTIFY_CLIENT_SECRET", "value": "<secret>"},
-        {"name": "PULP_TRUSTIFY_SEVERITY_THRESHOLD", "value": "critical"},
-        {"name": "PULP_TRUSTIFY_FAIL_OPEN", "value": "false"},
-        {"name": "PULP_TRUSTIFY_CA_BUNDLE", "value": "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"}
-      ]
-    },
-    "worker": {
-      "env_vars": [
-        {"name": "PULP_TRUSTIFY_URL", "value": "https://trustify.rachael.home.lan"},
-        {"name": "PULP_TRUSTIFY_ISSUER_URL", "value": "https://sso.rachael.home.lan/realms/trustify"},
-        {"name": "PULP_TRUSTIFY_CLIENT_ID", "value": "cli"},
-        {"name": "PULP_TRUSTIFY_CLIENT_SECRET", "value": "<secret>"},
-        {"name": "PULP_TRUSTIFY_SEVERITY_THRESHOLD", "value": "critical"},
-        {"name": "PULP_TRUSTIFY_FAIL_OPEN", "value": "false"},
-        {"name": "PULP_TRUSTIFY_CA_BUNDLE", "value": "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"}
-      ]
-    }
-  }
-}'
-```
-
-The Operator restarts all pods automatically after patching.
-
-### 3. Settings Reference
+## Settings Reference
 
 | Setting | Default | Description |
 |:--------|:--------|:------------|
@@ -403,25 +308,25 @@ All settings are read via Dynaconf. Set them as `PULP_TRUSTIFY_*` env vars on th
 
 **Note:** The guard automatically chooses the detection mode based on Trustify's data. No configuration change is needed to switch between analyze and search fallback modes.
 
-### 4. Create and Attach the Download Guard
+## Usage
+
+### Create and Attach the Download Guard
 
 The upload gate activates automatically. The download guard requires explicit attachment to a distribution:
 
 ```bash
 # Create a TrustifyGuard instance
 curl -X POST https://pulp.example.com/api/v3/contentguards/trustify/guard/ \
-  -u admin:<password> \
-  -H "Content-Type: application/json" \
+  -u admin:<password> -H "Content-Type: application/json" \
   -d '{"name": "trustify-guard"}'
 
 # Attach the guard to a distribution
 curl -X PATCH https://pulp.example.com/api/v3/distributions/python/pypi/<uuid>/ \
-  -u admin:<password> \
-  -H "Content-Type: application/json" \
+  -u admin:<password> -H "Content-Type: application/json" \
   -d '{"content_guard": "/api/v3/contentguards/trustify/guard/<guard-uuid>/"}'
 ```
 
-### 5. Verify
+### Verify
 
 ```bash
 # Plugin appears in Pulp status

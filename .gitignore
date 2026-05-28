@@ -44,3 +44,5 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+deploy/certs/*
+!deploy/certs/.gitkeep
