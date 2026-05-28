@@ -2,12 +2,20 @@
 
 from django.urls import path
 
-from pulp_trustify.app.viewsets import ScanViewSet
+from pulp_trustify.app.viewsets import (
+    ScanAdvisoryViewSet,
+    ScanViewSet,
+)
 
 urlpatterns = [
     path(
         "pulp/api/v3/trustify/scan/",
         ScanViewSet.as_view({"post": "create"}),
         name="scan",
+    ),
+    path(
+        "pulp/api/v3/trustify/advisories/",
+        ScanAdvisoryViewSet.as_view({"get": "list"}),
+        name="advisories",
     ),
 ]

@@ -19,6 +19,7 @@ class ScanResult:
     purl: str
     cve_ids: list[str] = field(default_factory=list)
     blocked: bool = False
+    detection_mode: str = ""
 
 
 def scan_content(
@@ -66,6 +67,7 @@ def scan_content(
                         purl=purl,
                         cve_ids=cve_ids,
                         blocked=bool(cve_ids),
+                        detection_mode="analyze",
                     )
                 )
             elif purl not in analyzed_purls:
@@ -76,6 +78,7 @@ def scan_content(
                         purl=purl,
                         cve_ids=cve_ids,
                         blocked=bool(cve_ids),
+                        detection_mode=("search_fallback" if cve_ids else ""),
                     )
                 )
             else:
@@ -85,6 +88,7 @@ def scan_content(
                         purl=purl,
                         cve_ids=[],
                         blocked=False,
+                        detection_mode="analyze",
                     )
                 )
 

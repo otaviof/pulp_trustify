@@ -3,7 +3,17 @@ from __future__ import annotations
 import logging
 import threading
 
-from pulpcore.plugin.models import ContentGuard
+from django.db.models import (
+    CASCADE,
+    CharField,
+    DateTimeField,
+    ForeignKey,
+    Index,
+    JSONField,
+    Model,
+    UUIDField,
+)
+from pulpcore.plugin.models import ContentGuard, Repository
 
 from pulp_trustify.client.client import TrustifyClient
 from pulp_trustify.guard import permit_request
@@ -66,3 +76,26 @@ class TrustifyGuard(ContentGuard):
 
     class Meta(ContentGuard.Meta):
         default_related_name = "%(app_label)s_%(model_name)s"
+
+
+class ScanAdvisory(Model):
+    """Records a vulnerability finding from a scanner run."""
+
+    repository = ForeignKey(
+        Repository,
+        on_delete=CASCADE,
+        related_name="scan_advisories",
+    )
+    content_pk = UUIDField()
+    purl = CharField(max_length=512)
+    cve_ids = JSONField(default=list)
+    severity = CharField(max_length=16)
+    detection_mode = CharField(max_length=16)
+    action = CharField(max_length=64)
+    scanned_at = DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            Index(fields=["repository", "scanned_at"]),
+            Index(fields=["purl"]),
+        ]

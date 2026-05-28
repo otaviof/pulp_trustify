@@ -127,9 +127,13 @@ flowchart TD
     G -- no --> I["Fallback: per-PURL<br/>check_purl()"]
     I --> H
     H --> J{"Vulnerable<br/>content found?"}
-    J -- yes --> K["Create new repo version<br/>with vulnerable content removed"]
+    J -- yes --> K["Apply scanner actions<br/>(configurable pipeline)"]
     J -- no --> L["No-op<br/>(no version created)"]
-    K --> M["Report results"]
+    K --> K1["Label content<br/>(pulp_labels)"]
+    K1 --> K2["Quarantine<br/>(if configured)"]
+    K2 --> K3["Remove from repo<br/>(if enabled)"]
+    K3 --> K4["Record advisory<br/>(ScanAdvisory)"]
+    K4 --> M["Report results"]
     L --> M
 ```
 
@@ -149,7 +153,7 @@ The Scanner is a Pulp dispatched task that proactively walks repository content 
 4. Queries Trustify in batches (default: 100 PURLs per API call)
 5. Uses analyze mode first, falls back to search for packages without
    OSV data
-6. Creates a new repository version **excluding** vulnerable artifacts
+6. Applies configurable actions: label, quarantine, remove, record advisory
 7. If no vulnerabilities found, completes without creating a version
 
 **Key differences from Guard/Gate:**
@@ -184,13 +188,8 @@ Response:
 **Monitoring scan progress:**
 
 ```bash
-# Poll the task
-curl https://pulp.example.com/api/v3/tasks/018f-1234-5678-90ab/ \
-  -u admin:<password>
-
-# Check progress reports
-curl https://pulp.example.com/api/v3/tasks/018f-1234-5678-90ab/ \
-  -u admin:<password> | jq '.progress_reports'
+# Poll the task (CLI waits for completion by default)
+pulp task show --href /api/v3/tasks/018f-1234-5678-90ab/
 ```
 
 Progress reports:
@@ -204,12 +203,10 @@ Progress reports:
 
 ```bash
 # View repository versions
-curl https://pulp.example.com/api/v3/repositories/python/python/<uuid>/versions/ \
-  -u admin:<password>
+pulp python repository version list --repository local-pypi
 
-# Check removed content in the new version
-curl https://pulp.example.com/api/v3/repositories/python/python/<uuid>/versions/<version-number>/removed_content/ \
-  -u admin:<password>
+# List content with labels (shows trustify.* metadata)
+pulp python content list
 ```
 
 **Limitations:**
@@ -218,6 +215,45 @@ curl https://pulp.example.com/api/v3/repositories/python/python/<uuid>/versions/
 - Scans the entire latest version (no incremental scanning)
 - Requires exclusive lock on repository (blocks concurrent syncs/scans)
 - Controlled by `TRUSTIFY_SCAN_ENABLED` setting (default: `True`)
+- Content removal can be disabled via `TRUSTIFY_SCAN_REMOVE_CONTENT=False` for label-only or advisory-only modes
+
+### Scanner Actions
+
+The scanner's post-detection behavior is a configurable pipeline of independent actions. Any combination can be enabled:
+
+| Action | Setting | Default | Description |
+|:-------|:--------|:--------|:------------|
+| Label | `TRUSTIFY_SCAN_LABEL_CONTENT` | `True` | Tag content with CVE metadata via `pulp_labels` |
+| Quarantine | `TRUSTIFY_SCAN_QUARANTINE_REPO` | `""` | Copy vulnerable content to a named quarantine repo |
+| Remove | `TRUSTIFY_SCAN_REMOVE_CONTENT` | `True` | Remove vulnerable content from source repo |
+| Advisory | `TRUSTIFY_SCAN_ADVISORY` | `True` | Record `ScanAdvisory` per finding |
+
+Actions execute in order: label (non-destructive) → quarantine → remove → advisory (records which actions were taken).
+
+**Label content** tags each vulnerable content unit with metadata queryable via Pulp's `pulp_label_select` filter:
+
+```bash
+# List all vulnerable content across all repos
+curl '.../api/v3/content/?pulp_label_select=trustify.vulnerable=true'
+
+# Filter by specific CVE
+curl '.../api/v3/content/?pulp_label_select=trustify.cves~CVE-2023-32681'
+
+# Filter by detection mode (analyze vs search fallback)
+curl '.../api/v3/content/?pulp_label_select=trustify.detected_by=analyze'
+```
+
+Labels applied: `trustify.vulnerable`, `trustify.cves`, `trustify.severity`, `trustify.detected_by`, `trustify.scanned`.
+
+**Quarantine** copies vulnerable content to a named repository before removal. Set `TRUSTIFY_SCAN_QUARANTINE_REPO` to a repository name (e.g., `"quarantine"`). The repository is auto-created on first use.
+
+**Advisory records** provide the "why" that repository version diffs lack. Each `ScanAdvisory` records CVE IDs, severity, detection mode (`analyze` or `search_fallback`), and which actions were taken.
+
+```bash
+# List all scan advisories
+curl https://pulp.example.com/pulp/api/v3/trustify/advisories/ \
+  -u admin:<password>
+```
 
 ### Detection Modes
 
@@ -301,6 +337,10 @@ See [deploy/README.md](deploy/README.md) for environment variables, script flags
 | `TRUSTIFY_FAIL_OPEN` | `False` | If `True`, allow downloads/uploads when Trustify API calls fail (applies to both analyze and search fallback modes) |
 | `TRUSTIFY_GATE_UPLOADS` | `True` | If `False`, disable upload-time vulnerability checks (download guard still applies) |
 | `TRUSTIFY_SCAN_ENABLED` | `True` | If `False`, disable the scan API endpoint |
+| `TRUSTIFY_SCAN_REMOVE_CONTENT` | `True` | Create new repo version excluding vulnerable content |
+| `TRUSTIFY_SCAN_QUARANTINE_REPO` | `""` | Quarantine repo name (empty = disabled) |
+| `TRUSTIFY_SCAN_LABEL_CONTENT` | `True` | Label content with CVE metadata via `pulp_labels` |
+| `TRUSTIFY_SCAN_ADVISORY` | `True` | Record `ScanAdvisory` per finding |
 | `TRUSTIFY_BATCH_SIZE` | `100` | Number of PURLs per batch analyze call (scanner only) |
 | `TRUSTIFY_LOG_LEVEL` | `"INFO"` | Log verbosity for the plugin (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) |
 
@@ -328,23 +368,23 @@ curl -X PATCH https://pulp.example.com/api/v3/distributions/python/pypi/<uuid>/ 
 
 ### Verify
 
+Examples below use the [`pulp` CLI](https://docs.pulpproject.org/pulp_cli/). Configure it with `pulp config create --base-url <url> --api-root <root> --username admin --password <pw>`. Plugin-specific endpoints (scan, advisories) use `curl` since the CLI has no subcommand for them.
+
 ```bash
 # Plugin appears in Pulp status
-curl -s https://pulp.example.com/api/v3/status/ | \
-  python3 -c "import sys,json; [print(v['component'], v['version']) \
+pulp status | python3 -c "import sys,json; \
+  [print(v['component'], v['version']) \
   for v in json.load(sys.stdin)['versions'] \
   if v['component']=='trustify']"
 
-# Test upload gate: upload a vulnerable package (should return 400)
-curl -X POST https://pulp.example.com/api/v3/content/python/packages/ \
-  -u admin:<password> \
-  -F "name=urllib3" \
-  -F "version=2.6.2" \
-  -F "file=@urllib3-2.6.2-py3-none-any.whl"
+# Test upload gate: upload a vulnerable package (should fail with CVE IDs)
+pulp python content upload \
+  --relative-path urllib3-2.6.2-py3-none-any.whl \
+  --file urllib3-2.6.2-py3-none-any.whl \
+  --repository local-pypi
 
 # Test download guard: download a vulnerable package (should return 403)
-# Works in both analyze mode (with OSV) and search fallback mode
-# (CVE-only)
+# Works in both analyze mode (with OSV) and search fallback mode (CVE-only)
 curl -o /dev/null -w "%{http_code}" \
   https://pulp.example.com/pulp/content/<dist>/urllib3-2.6.2-py3-none-any.whl
 
@@ -352,7 +392,7 @@ curl -o /dev/null -w "%{http_code}" \
 curl -o /dev/null -w "%{http_code}" \
   https://pulp.example.com/pulp/content/<dist>/urllib3-2.7.0-py3-none-any.whl
 
-# Test scanner: trigger a repository scan
+# Test scanner: trigger a repository scan (no CLI subcommand — use curl)
 curl -X POST https://pulp.example.com/api/v3/trustify/scan/ \
   -u admin:<password> \
   -H "Content-Type: application/json" \
@@ -360,13 +400,17 @@ curl -X POST https://pulp.example.com/api/v3/trustify/scan/ \
 # Expected: 202 Accepted with task href
 
 # Monitor the scan task
-curl https://pulp.example.com/api/v3/tasks/<task-uuid>/ \
-  -u admin:<password> | jq '.state, .progress_reports'
-# Expected: state="completed", progress shows scanning phases
+pulp task show --href /api/v3/tasks/<task-uuid>/
 
-# Verify new repository version was created (if vulnerable content found)
-curl https://pulp.example.com/api/v3/repositories/python/python/<uuid>/versions/ \
-  -u admin:<password> | jq '.results[0] | {number, removed_count}'
+# Verify repository versions
+pulp python repository version list --repository local-pypi
+
+# Check scan advisories (no CLI subcommand — use curl)
+curl -u admin:<password> \
+  https://pulp.example.com/api/v3/trustify/advisories/
+
+# Check content labels
+pulp python content list
 ```
 
 #### Verify Detection Mode

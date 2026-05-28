@@ -10,6 +10,11 @@ def _make_settings(**overrides):
         "TRUSTIFY_SEVERITY_THRESHOLD": "critical",
         "TRUSTIFY_FAIL_OPEN": False,
         "TRUSTIFY_BATCH_SIZE": 100,
+        "TRUSTIFY_SCAN_ENABLED": True,
+        "TRUSTIFY_SCAN_REMOVE_CONTENT": True,
+        "TRUSTIFY_SCAN_QUARANTINE_REPO": "",
+        "TRUSTIFY_SCAN_LABEL_CONTENT": True,
+        "TRUSTIFY_SCAN_ADVISORY": True,
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -55,6 +60,8 @@ def _make_content(pk, name, version):
     return ns
 
 
+@patch("pulp_trustify.app.tasks.scanner._record_advisories")
+@patch("pulp_trustify.app.tasks.scanner._label_content")
 @patch("pulp_trustify.app.tasks.scanner.scan_content")
 @patch("pulp_trustify.app.tasks.scanner.content_to_purl")
 @patch.dict(
@@ -69,6 +76,8 @@ def _make_content(pk, name, version):
 def test_removes_vulnerable_content(
     mock_content_to_purl,
     mock_scan_content,
+    mock_label_content,
+    mock_record_advisories,
 ):
     """Create new version removing vulnerable content."""
     from pulp_trustify.scanner import ScanResult
@@ -121,6 +130,8 @@ def test_removes_vulnerable_content(
     mock_version.content.filter.assert_called_once()
     filter_kwargs = mock_version.content.filter.call_args.kwargs
     assert set(filter_kwargs["pk__in"]) == {"pk1", "pk3"}
+    mock_label_content.assert_called_once()
+    mock_record_advisories.assert_called_once()
 
 
 @patch("pulp_trustify.app.tasks.scanner.scan_content")
@@ -295,3 +306,286 @@ def test_batch_size_from_settings(
 
     call_kwargs = mock_scan_content.call_args.kwargs
     assert call_kwargs["batch_size"] == 50
+
+
+def _setup_vulnerable_scan(mock_content_to_purl, mock_scan_content):
+    """Set up mocks for a scan that finds vulnerable content."""
+    from pulp_trustify.scanner import ScanResult
+
+    c1 = _make_content("pk1", "vuln-pkg", "1.0")
+    c2 = _make_content("pk2", "safe-pkg", "2.0")
+
+    mock_content_to_purl.side_effect = lambda c: f"pkg:pypi/{c.name}@{c.version}"
+
+    mock_scan_content.return_value = [
+        ScanResult(
+            content_pk="pk1",
+            purl="pkg:pypi/vuln-pkg@1.0",
+            cve_ids=["CVE-2023-001"],
+            blocked=True,
+            detection_mode="analyze",
+        ),
+        ScanResult(
+            content_pk="pk2",
+            purl="pkg:pypi/safe-pkg@2.0",
+        ),
+    ]
+
+    mock_repo = MagicMock()
+    mock_repo.pk = "repo-pk"
+    mock_version = MagicMock()
+    mock_version.content.all.return_value = [c1, c2]
+    mock_repo.latest_version.return_value = mock_version
+
+    new_version_ctx = MagicMock()
+    mock_repo.new_version.return_value.__enter__ = lambda _: new_version_ctx
+    mock_repo.new_version.return_value.__exit__ = lambda *_: None
+
+    return mock_repo, new_version_ctx
+
+
+@patch("pulp_trustify.app.tasks.scanner._record_advisories")
+@patch("pulp_trustify.app.tasks.scanner._label_content")
+@patch("pulp_trustify.app.tasks.scanner.scan_content")
+@patch("pulp_trustify.app.tasks.scanner.content_to_purl")
+@patch.dict(
+    sys.modules,
+    {
+        **_fake_pulpcore(),
+        **_fake_pulp_python(),
+        **_fake_app_models(),
+    },
+)
+@patch(
+    "django.conf.settings",
+    _make_settings(TRUSTIFY_SCAN_LABEL_CONTENT=False),
+)
+def test_label_content_skipped_when_disabled(
+    mock_content_to_purl,
+    mock_scan_content,
+    mock_label_content,
+    mock_record_advisories,
+):
+    """Skip labeling when disabled."""
+    mock_repo, _ = _setup_vulnerable_scan(mock_content_to_purl, mock_scan_content)
+
+    from pulp_trustify.app.tasks.scanner import (
+        scan_repository,
+    )
+
+    with patch(
+        "pulp_trustify.app.tasks.scanner._get_repository",
+        return_value=mock_repo,
+    ):
+        scan_repository(repository_pk="repo-pk")
+
+    mock_label_content.assert_not_called()
+    mock_record_advisories.assert_called_once()
+
+
+@patch("pulp_trustify.app.tasks.scanner._record_advisories")
+@patch("pulp_trustify.app.tasks.scanner._label_content")
+@patch("pulp_trustify.app.tasks.scanner.scan_content")
+@patch("pulp_trustify.app.tasks.scanner.content_to_purl")
+@patch.dict(
+    sys.modules,
+    {
+        **_fake_pulpcore(),
+        **_fake_pulp_python(),
+        **_fake_app_models(),
+    },
+)
+@patch(
+    "django.conf.settings",
+    _make_settings(TRUSTIFY_SCAN_ADVISORY=False),
+)
+def test_record_advisories_skipped_when_disabled(
+    mock_content_to_purl,
+    mock_scan_content,
+    mock_label_content,
+    mock_record_advisories,
+):
+    """Skip advisory records when disabled."""
+    mock_repo, _ = _setup_vulnerable_scan(mock_content_to_purl, mock_scan_content)
+
+    from pulp_trustify.app.tasks.scanner import (
+        scan_repository,
+    )
+
+    with patch(
+        "pulp_trustify.app.tasks.scanner._get_repository",
+        return_value=mock_repo,
+    ):
+        scan_repository(repository_pk="repo-pk")
+
+    mock_label_content.assert_called_once()
+    mock_record_advisories.assert_not_called()
+
+
+@patch("pulp_trustify.app.tasks.scanner._quarantine_content")
+@patch("pulp_trustify.app.tasks.scanner._record_advisories")
+@patch("pulp_trustify.app.tasks.scanner._label_content")
+@patch("pulp_trustify.app.tasks.scanner.scan_content")
+@patch("pulp_trustify.app.tasks.scanner.content_to_purl")
+@patch.dict(
+    sys.modules,
+    {
+        **_fake_pulpcore(),
+        **_fake_pulp_python(),
+        **_fake_app_models(),
+    },
+)
+@patch(
+    "django.conf.settings",
+    _make_settings(
+        TRUSTIFY_SCAN_QUARANTINE_REPO="quarantine",
+    ),
+)
+def test_quarantine_called_when_configured(
+    mock_content_to_purl,
+    mock_scan_content,
+    mock_label_content,
+    mock_record_advisories,
+    mock_quarantine,
+):
+    """Quarantine content when repo name is set."""
+    mock_repo, _ = _setup_vulnerable_scan(mock_content_to_purl, mock_scan_content)
+
+    from pulp_trustify.app.tasks.scanner import (
+        scan_repository,
+    )
+
+    with patch(
+        "pulp_trustify.app.tasks.scanner._get_repository",
+        return_value=mock_repo,
+    ):
+        scan_repository(repository_pk="repo-pk")
+
+    mock_quarantine.assert_called_once()
+    call_args = mock_quarantine.call_args
+    assert call_args[0][1] == "quarantine"
+
+
+@patch("pulp_trustify.app.tasks.scanner._quarantine_content")
+@patch("pulp_trustify.app.tasks.scanner._record_advisories")
+@patch("pulp_trustify.app.tasks.scanner._label_content")
+@patch("pulp_trustify.app.tasks.scanner.scan_content")
+@patch("pulp_trustify.app.tasks.scanner.content_to_purl")
+@patch.dict(
+    sys.modules,
+    {
+        **_fake_pulpcore(),
+        **_fake_pulp_python(),
+        **_fake_app_models(),
+    },
+)
+@patch("django.conf.settings", _make_settings())
+def test_quarantine_skipped_when_empty(
+    mock_content_to_purl,
+    mock_scan_content,
+    mock_label_content,
+    mock_record_advisories,
+    mock_quarantine,
+):
+    """Skip quarantine when repo name is empty."""
+    mock_repo, _ = _setup_vulnerable_scan(mock_content_to_purl, mock_scan_content)
+
+    from pulp_trustify.app.tasks.scanner import (
+        scan_repository,
+    )
+
+    with patch(
+        "pulp_trustify.app.tasks.scanner._get_repository",
+        return_value=mock_repo,
+    ):
+        scan_repository(repository_pk="repo-pk")
+
+    mock_quarantine.assert_not_called()
+
+
+@patch("pulp_trustify.app.tasks.scanner._record_advisories")
+@patch("pulp_trustify.app.tasks.scanner._label_content")
+@patch("pulp_trustify.app.tasks.scanner.scan_content")
+@patch("pulp_trustify.app.tasks.scanner.content_to_purl")
+@patch.dict(
+    sys.modules,
+    {
+        **_fake_pulpcore(),
+        **_fake_pulp_python(),
+        **_fake_app_models(),
+    },
+)
+@patch(
+    "django.conf.settings",
+    _make_settings(TRUSTIFY_SCAN_REMOVE_CONTENT=False),
+)
+def test_remove_content_skipped_when_disabled(
+    mock_content_to_purl,
+    mock_scan_content,
+    mock_label_content,
+    mock_record_advisories,
+):
+    """No new version when remove is disabled."""
+    mock_repo, _ = _setup_vulnerable_scan(mock_content_to_purl, mock_scan_content)
+
+    from pulp_trustify.app.tasks.scanner import (
+        scan_repository,
+    )
+
+    with patch(
+        "pulp_trustify.app.tasks.scanner._get_repository",
+        return_value=mock_repo,
+    ):
+        scan_repository(repository_pk="repo-pk")
+
+    mock_repo.new_version.assert_not_called()
+    mock_label_content.assert_called_once()
+    mock_record_advisories.assert_called_once()
+
+
+@patch("pulp_trustify.app.tasks.scanner._quarantine_content")
+@patch("pulp_trustify.app.tasks.scanner._record_advisories")
+@patch("pulp_trustify.app.tasks.scanner._label_content")
+@patch("pulp_trustify.app.tasks.scanner.scan_content")
+@patch("pulp_trustify.app.tasks.scanner.content_to_purl")
+@patch.dict(
+    sys.modules,
+    {
+        **_fake_pulpcore(),
+        **_fake_pulp_python(),
+        **_fake_app_models(),
+    },
+)
+@patch(
+    "django.conf.settings",
+    _make_settings(
+        TRUSTIFY_SCAN_QUARANTINE_REPO="quarantine",
+    ),
+)
+def test_actions_pipeline_order(
+    mock_content_to_purl,
+    mock_scan_content,
+    mock_label_content,
+    mock_record_advisories,
+    mock_quarantine,
+):
+    """Advisory records include all actions taken."""
+    mock_repo, _ = _setup_vulnerable_scan(mock_content_to_purl, mock_scan_content)
+
+    from pulp_trustify.app.tasks.scanner import (
+        scan_repository,
+    )
+
+    with patch(
+        "pulp_trustify.app.tasks.scanner._get_repository",
+        return_value=mock_repo,
+    ):
+        scan_repository(repository_pk="repo-pk")
+
+    call_args = mock_record_advisories.call_args
+    actions = call_args[0][3]
+    assert actions == [
+        "labeled",
+        "quarantined",
+        "removed",
+    ]

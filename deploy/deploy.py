@@ -20,6 +20,8 @@ from pathlib import Path
 
 CA_CONFIGMAP = "trustify-ca-bundle"
 CA_KEY = "ca-bundle.crt"
+# Pulp Operator mounts trusted CA ConfigMaps here
+CA_CONTAINER_PATH = "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
 COMPONENTS = ("api", "content", "worker")
 POD_LABEL = "app.kubernetes.io/component in (api,content,worker)"
 ROLLOUT_TIMEOUT = "120s"
@@ -268,6 +270,7 @@ Environment variables:
     ca_enabled = bool(ca_cert)
     if ca_enabled:
         step_ca_configmap(ca_cert)
+        env_vars["PULP_TRUSTIFY_CA_BUNDLE"] = CA_CONTAINER_PATH
     else:
         print("==> PULP_TRUSTIFY_CA_BUNDLE not set, skipping CA configmap")
 

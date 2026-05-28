@@ -104,6 +104,8 @@ def test_all_vulnerable_via_analyze():
     assert all(r.blocked for r in results)
     assert "CVE-2023-1234" in results[0].cve_ids
     assert "CVE-2023-5678" in results[1].cve_ids
+    assert results[0].detection_mode == "analyze"
+    assert results[1].detection_mode == "analyze"
 
 
 @patch("pulp_trustify.scanner.check_purl")
@@ -192,6 +194,7 @@ def test_fallback_triggered(mock_check):
     assert len(results) == 1
     assert results[0].blocked is True
     assert results[0].cve_ids == ["CVE-2023-1234"]
+    assert results[0].detection_mode == "search_fallback"
     mock_check.assert_called_once()
 
 
@@ -214,6 +217,7 @@ def test_fallback_clean(mock_check):
     assert len(results) == 1
     assert results[0].blocked is False
     assert results[0].cve_ids == []
+    assert results[0].detection_mode == ""
 
 
 def test_fail_open_on_batch_error():

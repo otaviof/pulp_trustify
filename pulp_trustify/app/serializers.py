@@ -4,7 +4,7 @@ from pulpcore.plugin.models import Repository
 from pulpcore.plugin.serializers import ContentGuardSerializer
 from rest_framework import serializers
 
-from pulp_trustify.app.models import TrustifyGuard
+from pulp_trustify.app.models import ScanAdvisory, TrustifyGuard
 
 
 class TrustifyGuardSerializer(ContentGuardSerializer):
@@ -28,3 +28,19 @@ class ScanSerializer(serializers.Serializer):
             return Repository.objects.get(pk=pk)
         except Repository.DoesNotExist:
             raise serializers.ValidationError(f"Repository not found: {value}")
+
+
+class ScanAdvisorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ScanAdvisory
+        fields = [
+            "repository",
+            "content_pk",
+            "purl",
+            "cve_ids",
+            "severity",
+            "detection_mode",
+            "action",
+            "scanned_at",
+        ]
+        read_only_fields = fields

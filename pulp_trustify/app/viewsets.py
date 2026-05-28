@@ -10,9 +10,11 @@ from pulpcore.plugin.viewsets import (
     OperationPostponedResponse,
 )
 from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
 
-from pulp_trustify.app.models import TrustifyGuard
+from pulp_trustify.app.models import ScanAdvisory, TrustifyGuard
 from pulp_trustify.app.serializers import (
+    ScanAdvisorySerializer,
     ScanSerializer,
     TrustifyGuardSerializer,
 )
@@ -62,3 +64,9 @@ class ScanViewSet(viewsets.ViewSet):
         logger.info("Scan dispatched for repository '%s'", repository.pk)
 
         return OperationPostponedResponse(result, request)
+
+
+class ScanAdvisoryViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = ScanAdvisory.objects.all()
+    serializer_class = ScanAdvisorySerializer
+    permission_classes = [IsAuthenticated]

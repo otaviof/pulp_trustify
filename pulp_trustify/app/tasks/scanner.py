@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 
 from pulp_trustify.purl import content_to_purl
 from pulp_trustify.scanner import scan_content
@@ -11,6 +12,63 @@ PROGRESS_SCANNING = "Scanning content for vulnerabilities"
 PROGRESS_REMOVING = "Removing vulnerable content"
 
 
+def _label_content(results, content_qs, threshold):
+    """Tag vulnerable content with CVE metadata labels."""
+    now = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+    blocked = [r for r in results if r.blocked]
+    blocked_pks = [r.content_pk for r in blocked]
+    content_map = {str(c.pk): c for c in content_qs.filter(pk__in=blocked_pks)}
+    for result in blocked:
+        content = content_map.get(result.content_pk)
+        if content is None:
+            continue
+        content.pulp_labels.update(
+            {
+                "trustify.vulnerable": "true",
+                "trustify.cves": " ".join(result.cve_ids),
+                "trustify.severity": threshold,
+                "trustify.detected_by": result.detection_mode,
+                "trustify.scanned": now,
+            }
+        )
+        content.save(update_fields=["pulp_labels"])
+
+
+def _quarantine_content(blocked_qs, repo_name):
+    """Copy vulnerable content to a quarantine repository."""
+    from pulpcore.plugin.models import Repository
+
+    repository, _ = Repository.objects.get_or_create(
+        name=repo_name,
+        defaults={
+            "description": "Quarantined vulnerable content",
+        },
+    )
+    with repository.new_version() as version:
+        version.add_content(content=blocked_qs)
+
+
+def _record_advisories(results, repository, threshold, actions):
+    """Persist ScanAdvisory records for each finding."""
+    from pulp_trustify.app.models import ScanAdvisory
+
+    action = ",".join(actions)
+    advisories = [
+        ScanAdvisory(
+            repository=repository,
+            content_pk=r.content_pk,
+            purl=r.purl,
+            cve_ids=r.cve_ids,
+            severity=threshold,
+            detection_mode=r.detection_mode,
+            action=action,
+        )
+        for r in results
+        if r.blocked
+    ]
+    ScanAdvisory.objects.bulk_create(advisories)
+
+
 def scan_repository(repository_pk: str) -> None:
     """Scan a repository for vulnerable content and create new version
     without blocked items."""
@@ -18,7 +76,7 @@ def scan_repository(repository_pk: str) -> None:
 
     logger.info("Scan task started for repository '%s'", repository_pk)
 
-    if not getattr(settings, "TRUSTIFY_SCAN_ENABLED", True):
+    if not settings.TRUSTIFY_SCAN_ENABLED:
         logger.info("Scanning disabled via TRUSTIFY_SCAN_ENABLED")
         return
 
@@ -64,7 +122,8 @@ def scan_repository(repository_pk: str) -> None:
         batch_size=settings.TRUSTIFY_BATCH_SIZE,
     )
 
-    blocked_pks = {r.content_pk for r in results if r.blocked}
+    blocked = [r for r in results if r.blocked]
+    blocked_pks = {r.content_pk for r in blocked}
 
     if not blocked_pks:
         logger.info(
@@ -73,16 +132,41 @@ def scan_repository(repository_pk: str) -> None:
         )
         return
 
-    logger.info(
-        "%s: removing %d vulnerable items",
-        PROGRESS_REMOVING,
-        len(blocked_pks),
-    )
-
     blocked_qs = latest_version.content.filter(pk__in=blocked_pks)
+    actions: list[str] = []
 
-    with repository.new_version() as new_version:
-        new_version.remove_content(content=blocked_qs)
+    if settings.TRUSTIFY_SCAN_LABEL_CONTENT:
+        _label_content(
+            blocked,
+            latest_version.content,
+            settings.TRUSTIFY_SEVERITY_THRESHOLD,
+        )
+        actions.append("labeled")
+
+    if settings.TRUSTIFY_SCAN_QUARANTINE_REPO:
+        _quarantine_content(
+            blocked_qs,
+            settings.TRUSTIFY_SCAN_QUARANTINE_REPO,
+        )
+        actions.append("quarantined")
+
+    if settings.TRUSTIFY_SCAN_REMOVE_CONTENT:
+        logger.info(
+            "%s: removing %d vulnerable items",
+            PROGRESS_REMOVING,
+            len(blocked_pks),
+        )
+        with repository.new_version() as new_version:
+            new_version.remove_content(content=blocked_qs)
+        actions.append("removed")
+
+    if settings.TRUSTIFY_SCAN_ADVISORY:
+        _record_advisories(
+            blocked,
+            repository,
+            settings.TRUSTIFY_SEVERITY_THRESHOLD,
+            actions,
+        )
 
 
 def _get_repository(pk: str):
