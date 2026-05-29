@@ -12,7 +12,7 @@ PROGRESS_SCANNING = "Scanning content for vulnerabilities"
 PROGRESS_REMOVING = "Removing vulnerable content"
 
 
-def _label_content(results, content_qs, threshold):
+def _label_content(results, content_qs, threshold, source_repo):
     """Tag vulnerable content with CVE metadata labels."""
     now = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
     blocked = [r for r in results if r.blocked]
@@ -29,6 +29,7 @@ def _label_content(results, content_qs, threshold):
                 "trustify.severity": threshold,
                 "trustify.detected_by": result.detection_mode,
                 "trustify.scanned": now,
+                "trustify.source_repo": source_repo,
             }
         )
         content.save(update_fields=["pulp_labels"])
@@ -179,6 +180,7 @@ def scan_repository(repository_pk: str) -> None:
             blocked,
             latest_version.content,
             settings.TRUSTIFY_SEVERITY_THRESHOLD,
+            repository.name,
         )
         actions.append("labeled")
 

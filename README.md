@@ -243,9 +243,14 @@ curl '.../api/v3/content/?pulp_label_select=trustify.cves~CVE-2023-32681'
 
 # Filter by detection mode (analyze vs search fallback)
 curl '.../api/v3/content/?pulp_label_select=trustify.detected_by=analyze'
+
+# Find all content quarantined from a specific repo
+curl '.../api/v3/content/?pulp_label_select=trustify.source_repo=my-python-repo'
 ```
 
-Labels applied: `trustify.vulnerable`, `trustify.cves`, `trustify.severity`, `trustify.detected_by`, `trustify.scanned`.
+Labels applied: `trustify.vulnerable`, `trustify.cves`, `trustify.severity`, `trustify.detected_by`, `trustify.scanned`, `trustify.source_repo`.
+
+The `trustify.source_repo` label records which repository the vulnerability was discovered in — useful when inspecting quarantined content to answer "where did this come from?"
 
 **Quarantine** copies vulnerable content to typed repositories before removal. Set `TRUSTIFY_SCAN_QUARANTINE_REPO` to a name prefix (e.g., `"quarantine"`). The scanner creates one quarantine repository per plugin type, matching the source repository type. For example, prefix `"quarantine"` creates `"quarantine-python"` for Python repos and `"quarantine-rpm"` for RPM repos. Each typed quarantine repo is auto-created on first use.
 

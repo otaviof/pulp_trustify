@@ -893,3 +893,51 @@ def test_enriched_log_output(
     assert (
         "https://trustify.example.com/vulnerabilities/CVE-2023-002" in log_output
     )
+
+
+@patch.dict(
+    sys.modules,
+    {
+        **_fake_pulpcore(),
+        **_fake_pulp_python(),
+        **_fake_app_models(),
+    },
+)
+@patch("django.conf.settings", _make_settings())
+def test_label_content_sets_source_repo():
+    """_label_content sets trustify.source_repo label."""
+    from pulp_trustify.scanner import ScanResult, VulnerabilityDetail
+
+    c1 = _make_content("pk1", "vuln-pkg", "1.0")
+    c1.pulp_labels = {}
+    c1.save = MagicMock()
+
+    results = [
+        ScanResult(
+            content_pk="pk1",
+            purl="pkg:pypi/vuln-pkg@1.0",
+            cve_ids=["CVE-2023-001"],
+            blocked=True,
+            detection_mode="analyze",
+            details=[
+                VulnerabilityDetail(
+                    cve_id="CVE-2023-001",
+                    severity="critical",
+                    trustify_url=(
+                        "https://trustify.example.com"
+                        "/vulnerabilities/CVE-2023-001"
+                    ),
+                )
+            ],
+        ),
+    ]
+
+    content_qs = MagicMock()
+    content_qs.filter.return_value = [c1]
+
+    from pulp_trustify.app.tasks.scanner import _label_content
+
+    _label_content(results, content_qs, "critical", "my-python-repo")
+
+    assert c1.pulp_labels["trustify.source_repo"] == "my-python-repo"
+    c1.save.assert_called_once_with(update_fields=["pulp_labels"])
