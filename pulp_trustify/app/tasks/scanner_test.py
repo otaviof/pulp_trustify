@@ -464,6 +464,7 @@ def test_quarantine_called_when_configured(
     mock_quarantine.assert_called_once()
     call_args = mock_quarantine.call_args
     assert call_args[0][1] == "quarantine"
+    assert call_args[0][2] is mock_repo
 
 
 @patch("pulp_trustify.app.tasks.scanner._quarantine_content")
@@ -589,3 +590,104 @@ def test_actions_pipeline_order(
         "quarantined",
         "removed",
     ]
+
+
+@patch.dict(
+    sys.modules,
+    {
+        **_fake_pulpcore(),
+        **_fake_pulp_python(),
+        **_fake_app_models(),
+    },
+)
+@patch("django.conf.settings", _make_settings())
+def test_quarantine_creates_typed_repo():
+    """Quarantine uses source repo type to create typed repository."""
+
+    class FakePythonRepo:
+        CONTENT_TYPES = ["python.python.package"]
+        pulp_type = "python.python"
+        objects: MagicMock = MagicMock()
+
+    source = FakePythonRepo()
+
+    mock_repo_instance = MagicMock()
+    mock_version_ctx = MagicMock()
+    mock_repo_instance.new_version.return_value.__enter__ = lambda _: (
+        mock_version_ctx
+    )
+    mock_repo_instance.new_version.return_value.__exit__ = lambda *_: None
+    FakePythonRepo.objects.get_or_create.return_value = (
+        mock_repo_instance,
+        True,
+    )
+
+    blocked_qs = MagicMock()
+
+    from pulp_trustify.app.tasks.scanner import _quarantine_content
+
+    _quarantine_content(blocked_qs, "quarantine", source)
+
+    FakePythonRepo.objects.get_or_create.assert_called_once()
+    call_kwargs = FakePythonRepo.objects.get_or_create.call_args.kwargs
+    assert call_kwargs["name"] == "quarantine-python"
+    assert "description" in call_kwargs["defaults"]
+    mock_version_ctx.add_content.assert_called_once_with(content=blocked_qs)
+
+
+@patch.dict(
+    sys.modules,
+    {
+        **_fake_pulpcore(),
+        **_fake_pulp_python(),
+        **_fake_app_models(),
+    },
+)
+@patch("django.conf.settings", _make_settings())
+def test_quarantine_skips_base_repo():
+    """Quarantine skips base Repository with empty CONTENT_TYPES."""
+
+    class BaseRepo:
+        CONTENT_TYPES: list[str] = []
+        pulp_type = "core.repository"
+        objects: MagicMock = MagicMock()
+
+    source = BaseRepo()
+
+    blocked_qs = MagicMock()
+
+    from pulp_trustify.app.tasks.scanner import _quarantine_content
+
+    _quarantine_content(blocked_qs, "quarantine", source)
+
+    BaseRepo.objects.get_or_create.assert_not_called()
+
+
+@patch.dict(
+    sys.modules,
+    {
+        **_fake_pulpcore(),
+        **_fake_pulp_python(),
+        **_fake_app_models(),
+    },
+)
+@patch("django.conf.settings", _make_settings())
+def test_get_repository_uses_cast():
+    """_get_repository calls Repository.objects.get(pk).cast()."""
+    from pulpcore.plugin.models import Repository as _Repo
+
+    repo_mock: MagicMock = _Repo  # type: ignore[assignment]
+
+    mock_repo = MagicMock()
+    mock_casted_repo = MagicMock()
+    mock_repo.cast.return_value = mock_casted_repo
+
+    repo_mock.objects.get.return_value = mock_repo
+
+    from pulp_trustify.app.tasks.scanner import _get_repository
+
+    result = _get_repository("test-pk")
+
+    repo_mock.objects.get.assert_called_once_with(pk="test-pk")
+    mock_repo.cast.assert_called_once()
+    assert result is mock_casted_repo

@@ -34,14 +34,21 @@ def _label_content(results, content_qs, threshold):
         content.save(update_fields=["pulp_labels"])
 
 
-def _quarantine_content(blocked_qs, repo_name):
-    """Copy vulnerable content to a quarantine repository."""
-    from pulpcore.plugin.models import Repository
-
-    repository, _ = Repository.objects.get_or_create(
+def _quarantine_content(blocked_qs, repo_prefix, source_repo):
+    """Copy vulnerable content to a typed quarantine repository."""
+    repo_cls = type(source_repo)
+    if not repo_cls.CONTENT_TYPES:
+        logger.warning(
+            "Quarantine skipped: repository type '%s' has no CONTENT_TYPES",
+            source_repo.pulp_type,
+        )
+        return
+    type_suffix = source_repo.pulp_type.split(".")[-1]
+    repo_name = f"{repo_prefix}-{type_suffix}"
+    repository, _ = repo_cls.objects.get_or_create(
         name=repo_name,
         defaults={
-            "description": "Quarantined vulnerable content",
+            "description": f"Quarantined vulnerable {type_suffix} content",
         },
     )
     with repository.new_version() as version:
@@ -147,6 +154,7 @@ def scan_repository(repository_pk: str) -> None:
         _quarantine_content(
             blocked_qs,
             settings.TRUSTIFY_SCAN_QUARANTINE_REPO,
+            repository,
         )
         actions.append("quarantined")
 
@@ -173,17 +181,7 @@ def _get_repository(pk: str):
     """Load a repository by primary key."""
     from pulpcore.plugin.models import Repository
 
-    try:
-        from pulp_python.app.models import (  # type: ignore[import-not-found]
-            PythonRepository,
-        )
-    except ImportError:
-        return Repository.objects.get(pk=pk)
-
-    try:
-        return PythonRepository.objects.get(pk=pk)
-    except PythonRepository.DoesNotExist:
-        return Repository.objects.get(pk=pk)
+    return Repository.objects.get(pk=pk).cast()
 
 
 def _enumerate_content(

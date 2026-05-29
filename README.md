@@ -224,7 +224,7 @@ The scanner's post-detection behavior is a configurable pipeline of independent 
 | Action | Setting | Default | Description |
 |:-------|:--------|:--------|:------------|
 | Label | `TRUSTIFY_SCAN_LABEL_CONTENT` | `True` | Tag content with CVE metadata via `pulp_labels` |
-| Quarantine | `TRUSTIFY_SCAN_QUARANTINE_REPO` | `""` | Copy vulnerable content to a named quarantine repo |
+| Quarantine | `TRUSTIFY_SCAN_QUARANTINE_REPO` | `""` | Copy vulnerable content to a typed quarantine repo |
 | Remove | `TRUSTIFY_SCAN_REMOVE_CONTENT` | `True` | Remove vulnerable content from source repo |
 | Advisory | `TRUSTIFY_SCAN_ADVISORY` | `True` | Record `ScanAdvisory` per finding |
 
@@ -245,7 +245,22 @@ curl '.../api/v3/content/?pulp_label_select=trustify.detected_by=analyze'
 
 Labels applied: `trustify.vulnerable`, `trustify.cves`, `trustify.severity`, `trustify.detected_by`, `trustify.scanned`.
 
-**Quarantine** copies vulnerable content to a named repository before removal. Set `TRUSTIFY_SCAN_QUARANTINE_REPO` to a repository name (e.g., `"quarantine"`). The repository is auto-created on first use.
+**Quarantine** copies vulnerable content to typed repositories before removal. Set `TRUSTIFY_SCAN_QUARANTINE_REPO` to a name prefix (e.g., `"quarantine"`). The scanner creates one quarantine repository per plugin type, matching the source repository type. For example, prefix `"quarantine"` creates `"quarantine-python"` for Python repos and `"quarantine-rpm"` for RPM repos. Each typed quarantine repo is auto-created on first use.
+
+This typed approach preserves content semantics and enables standard Pulp CLI operations:
+
+```bash
+# List quarantined Python content
+pulp python repository content list \
+  --repository quarantine-python
+
+# Move a package back to the original repository
+pulp python repository content add \
+  --repository local-pypi \
+  --href /pulp/api/v3/content/python/packages/<uuid>/
+```
+
+**Upgrade note:** Existing base quarantine repositories from versions prior to typed quarantine are orphaned and can be cleaned up manually.
 
 **Advisory records** provide the "why" that repository version diffs lack. Each `ScanAdvisory` records CVE IDs, severity, detection mode (`analyze` or `search_fallback`), and which actions were taken.
 
@@ -338,7 +353,7 @@ See [deploy/README.md](deploy/README.md) for environment variables, script flags
 | `TRUSTIFY_GATE_UPLOADS` | `True` | If `False`, disable upload-time vulnerability checks (download guard still applies) |
 | `TRUSTIFY_SCAN_ENABLED` | `True` | If `False`, disable the scan API endpoint |
 | `TRUSTIFY_SCAN_REMOVE_CONTENT` | `True` | Create new repo version excluding vulnerable content |
-| `TRUSTIFY_SCAN_QUARANTINE_REPO` | `""` | Quarantine repo name (empty = disabled) |
+| `TRUSTIFY_SCAN_QUARANTINE_REPO` | `""` | Quarantine repo name prefix (empty = disabled) |
 | `TRUSTIFY_SCAN_LABEL_CONTENT` | `True` | Label content with CVE metadata via `pulp_labels` |
 | `TRUSTIFY_SCAN_ADVISORY` | `True` | Record `ScanAdvisory` per finding |
 | `TRUSTIFY_BATCH_SIZE` | `100` | Number of PURLs per batch analyze call (scanner only) |
