@@ -1,12 +1,13 @@
 # `pulp_trustify`
 
-Pulp plugin integrating [Trustify](https://trustify.dev/) CVE intelligence for vulnerability-gated artifact serving. The plugin provides three complementary protection mechanisms:
+Pulp plugin integrating [Trustify](https://trustify.dev/) CVE intelligence for vulnerability-gated artifact serving. The plugin provides four complementary protection mechanisms:
 
 1. **Download Guard**: A `ContentGuard` that blocks downloads of vulnerable packages
 2. **Upload Gate**: A pre-save signal handler that blocks uploads of vulnerable packages
 3. **Scanner**: A dispatched task that removes vulnerable artifacts from existing repositories
+4. **Yank Warnings**: PEP 592 middleware that marks vulnerable packages as "yanked" in the Simple API index
 
-All three use the same dual-mode detection (analyze + search fallback) and share the severity threshold configuration.
+All use the same dual-mode detection (analyze + search fallback) and share the severity threshold configuration.
 
 ## Architecture Overview
 
@@ -16,6 +17,7 @@ flowchart TD
         A["Download Guard<br/>(real-time blocking)"]
         B["Upload Gate<br/>(upload-time blocking)"]
         C["Scanner<br/>(periodic sweep)"]
+        D2["Yank Warnings<br/>(PEP 592 Simple API)"]
     end
     
     subgraph "Coverage Timeline"
@@ -377,6 +379,8 @@ See [deploy/README.md](deploy/README.md) for environment variables, script flags
 | `TRUSTIFY_SCAN_ADVISORY` | `True` | Record `ScanAdvisory` per finding |
 | `TRUSTIFY_BATCH_SIZE` | `100` | Number of PURLs per batch analyze call (scanner only) |
 | `TRUSTIFY_ENRICH_DETAILS` | `True` | Include Trustify vulnerability URLs in findings and advisory records |
+| `TRUSTIFY_YANK_VULNERABLE` | `True` | Inject PEP 592 `data-yanked` into Simple API so pip warns before downloading vulnerable packages |
+| `TRUSTIFY_YANK_MAX_CVES` | `3` | Maximum number of CVE URLs to include in the yanked reason string shown by pip |
 | `TRUSTIFY_LOG_LEVEL` | `"INFO"` | Log verbosity for the plugin (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) |
 
 All settings are read via Dynaconf. Set them as `PULP_TRUSTIFY_*` env vars on the Pulp pods.
@@ -497,6 +501,67 @@ pulp_trustify...scanner: PURL 'pkg:pypi/urllib3@2.6.2' has 1 CVEs at or above 'c
 **Advisory API** — the `details` field carries per-CVE enrichment (see [Scanner Actions](#scanner-actions)).
 
 Enrichment is controlled by `TRUSTIFY_ENRICH_DETAILS` (default: `True`). Set to `False` to revert to CVE-ID-only messages. URLs are constructed locally from `TRUSTIFY_URL` — no extra API calls.
+
+#### PEP 592 Yank Warnings
+
+pip shows an inline warning with the CVE ID and Trustify URL **before** downloading vulnerable packages. This gives operators context before the download guard's 403 response.
+
+When a client queries the Simple API index (e.g., `GET /pypi/local-pypi/simple/urllib3/`), the `YankMiddleware` intercepts the response and injects PEP 592 metadata for packages marked as vulnerable in `pulp_labels`:
+
+- **HTML format**: `data-yanked="https://trustify.example.com/vulnerabilities/CVE-2026-21441"`
+- **JSON format**: `"yanked": "https://trustify.example.com/vulnerabilities/CVE-2026-21441"`
+
+pip parses the `data-yanked` attribute and shows a warning before attempting the download:
+
+```
+$ pip install --no-deps \
+    --index-url https://pulp.example.com/pypi/local-pypi/simple/ \
+    urllib3==2.6.2
+WARNING: The candidate selected for download or install is a yanked version: 'urllib3'
+  candidate (version 2.6.2 at .../urllib3-2.6.2.whl)
+Reason for being yanked: https://trustify.example.com/vulnerabilities/CVE-2026-21441
+```
+
+Verify the `data-yanked` attribute in the HTML Simple API:
+
+```bash
+# Check HTML Simple API
+curl -sSk 'https://pulp.example.com/pypi/local-pypi/simple/urllib3/'
+# Expected: <a ... data-yanked="https://trustify.example.com/vulnerabilities/CVE-2026-21441">
+
+# Check JSON Simple API (if supported by pulp_python)
+curl -sSk -H 'Accept: application/vnd.pypi.simple.v1+json' \
+  'https://pulp.example.com/pypi/local-pypi/simple/urllib3/'
+# Expected: {"yanked": "https://trustify.example.com/vulnerabilities/CVE-2026-21441", ...}
+```
+
+**Key points:**
+
+- Only applies to **repo-only distributions** (not publication-based)
+- Works with both HTML and JSON Simple API formats
+- Requires pip to use the **API app URL**, not the content app URL:
+
+```bash
+# Correct (API app — dynamic simple index, yank warnings active)
+pip install --index-url https://pulp.example.com/pypi/local-pypi/simple/ ...
+
+# Wrong (content app — needs publication, no yank warnings)
+pip install --index-url https://pulp.example.com/pulp/content/local-pypi/simple/ ...
+```
+
+**Interaction with download guard:**
+
+When both yank warnings and download guard are active:
+
+1. pip sees the `data-yanked` warning (inline, before download)
+2. If user proceeds with an exact pin (`urllib3==2.6.2`), pip tries to download
+3. Download guard blocks with 403
+
+The warning gives context *before* the hard block.
+
+**Configuration:**
+
+Controlled by the `TRUSTIFY_YANK_VULNERABLE` setting (default: `True`). Set to `False` to disable yank warnings while keeping the download guard active.
 
 #### Verify Detection Mode
 
