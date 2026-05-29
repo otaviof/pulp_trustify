@@ -59,7 +59,7 @@ def _build_yanked_reason(
 def _label_lookup(
     filenames: list[str],
 ) -> dict[str, str]:
-    from pulp_python.app.models import (
+    from pulp_python.app.models import (  # type: ignore[import-not-found]
         PythonPackageContent,
     )
 
@@ -145,8 +145,8 @@ class YankMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
         try:
-            from pulp_python.app.models import (  # noqa: F401
-                PythonPackageContent,
+            from pulp_python.app.models import (  # type: ignore[import-not-found]
+                PythonPackageContent,  # noqa: F401
             )
 
             self._available = True
