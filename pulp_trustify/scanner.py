@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pulp_trustify.client.client import (
     TrustifyError,
     VulnerabilityChecker,
+    build_trustify_url,
 )
 from pulp_trustify.gate import check_purl
 from pulp_trustify.policy import filter_vulnerabilities
@@ -14,10 +15,19 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
+class VulnerabilityDetail:
+    cve_id: str
+    severity: str
+    trustify_url: str
+    description: str = ""
+
+
+@dataclass(frozen=True)
 class ScanResult:
     content_pk: str
     purl: str
     cve_ids: list[str] = field(default_factory=list)
+    details: list[VulnerabilityDetail] = field(default_factory=list)
     blocked: bool = False
     detection_mode: str = ""
 
@@ -28,6 +38,7 @@ def scan_content(
     threshold: str,
     fail_open: bool,
     batch_size: int = 100,
+    base_url: str = "",
 ) -> list[ScanResult]:
     """Scan content for vulnerabilities. Returns list of ScanResults."""
     logger.debug(
@@ -56,27 +67,38 @@ def scan_content(
             batch_purls,
             threshold,
             fail_open,
+            base_url,
         )
 
         for pk, purl in batch:
             if purl in vuln_map:
-                cve_ids = vuln_map[purl]
+                details = vuln_map[purl]
                 results.append(
                     ScanResult(
                         content_pk=pk,
                         purl=purl,
-                        cve_ids=cve_ids,
-                        blocked=bool(cve_ids),
+                        cve_ids=[d.cve_id for d in details],
+                        details=details,
+                        blocked=bool(details),
                         detection_mode="analyze",
                     )
                 )
             elif purl not in analyzed_purls:
                 cve_ids = check_purl(client, purl, threshold, fail_open)
+                details = [
+                    VulnerabilityDetail(
+                        cve_id=cve,
+                        severity="unknown",
+                        trustify_url=build_trustify_url(base_url, cve),
+                    )
+                    for cve in cve_ids
+                ]
                 results.append(
                     ScanResult(
                         content_pk=pk,
                         purl=purl,
                         cve_ids=cve_ids,
+                        details=details,
                         blocked=bool(cve_ids),
                         detection_mode=("search_fallback" if cve_ids else ""),
                     )
@@ -87,6 +109,7 @@ def scan_content(
                         content_pk=pk,
                         purl=purl,
                         cve_ids=[],
+                        details=[],
                         blocked=False,
                         detection_mode="analyze",
                     )
@@ -100,7 +123,8 @@ def _analyze_batch(
     purls: list[str],
     threshold: str,
     fail_open: bool,
-) -> tuple[dict[str, list[str]], set[str]]:
+    base_url: str,
+) -> tuple[dict[str, list[VulnerabilityDetail]], set[str]]:
     """Analyze a batch of PURLs. Returns (vuln_map, analyzed_purls)."""
     try:
         response = client.analyze(purls)
@@ -113,7 +137,7 @@ def _analyze_batch(
             return {}, set()
         raise
 
-    vuln_map: dict[str, list[str]] = {}
+    vuln_map: dict[str, list[VulnerabilityDetail]] = {}
     analyzed_purls: set[str] = set()
 
     for item in response.get("items", []):
@@ -127,7 +151,19 @@ def _analyze_batch(
             matching = filter_vulnerabilities(details, threshold)
             if matching:
                 vuln_map[purl] = [
-                    entry.get("entry", {}).get("cve", "unknown")
+                    VulnerabilityDetail(
+                        cve_id=entry.get("entry", {}).get("cve", "unknown"),
+                        severity=(
+                            entry.get("base_score", {}).get(
+                                "severity",
+                                "unknown",
+                            )
+                        ),
+                        trustify_url=build_trustify_url(
+                            base_url,
+                            entry.get("entry", {}).get("cve", "unknown"),
+                        ),
+                    )
                     for entry in matching
                 ]
 

@@ -262,7 +262,7 @@ pulp python repository content add \
 
 **Upgrade note:** Existing base quarantine repositories from versions prior to typed quarantine are orphaned and can be cleaned up manually.
 
-**Advisory records** provide the "why" that repository version diffs lack. Each `ScanAdvisory` records CVE IDs, severity, detection mode (`analyze` or `search_fallback`), and which actions were taken.
+**Advisory records** provide the "why" that repository version diffs lack. Each `ScanAdvisory` records CVE IDs, severity, detection mode (`analyze` or `search_fallback`), which actions were taken, and enriched vulnerability details with direct Trustify URLs.
 
 ```bash
 # List all scan advisories
@@ -270,10 +270,29 @@ curl https://pulp.example.com/pulp/api/v3/trustify/advisories/ \
   -u admin:<password>
 ```
 
+Each advisory includes a `details` field with per-CVE enrichment:
+
+```json
+{
+  "purl": "pkg:pypi/urllib3@2.6.2",
+  "cve_ids": ["CVE-2024-12345"],
+  "details": [
+    {
+      "cve_id": "CVE-2024-12345",
+      "severity": "critical",
+      "trustify_url": "https://trustify.example.com/vulnerabilities/CVE-2024-12345",
+      "description": ""
+    }
+  ],
+  "severity": "critical",
+  "detection_mode": "analyze",
+  "action": "labeled,removed"
+}
+```
+
 ### Detection Modes
 
-The guard operates in two modes, trying **analyze** first and falling
-back to **search** when needed:
+The guard operates in two modes, trying **analyze** first and falling back to **search** when needed:
 
 #### Analyze Mode (Preferred)
 
@@ -357,6 +376,7 @@ See [deploy/README.md](deploy/README.md) for environment variables, script flags
 | `TRUSTIFY_SCAN_LABEL_CONTENT` | `True` | Label content with CVE metadata via `pulp_labels` |
 | `TRUSTIFY_SCAN_ADVISORY` | `True` | Record `ScanAdvisory` per finding |
 | `TRUSTIFY_BATCH_SIZE` | `100` | Number of PURLs per batch analyze call (scanner only) |
+| `TRUSTIFY_ENRICH_DETAILS` | `True` | Include Trustify vulnerability URLs in findings and advisory records |
 | `TRUSTIFY_LOG_LEVEL` | `"INFO"` | Log verbosity for the plugin (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`) |
 
 All settings are read via Dynaconf. Set them as `PULP_TRUSTIFY_*` env vars on the Pulp pods.
@@ -428,6 +448,56 @@ curl -u admin:<password> \
 pulp python content list
 ```
 
+#### Enriched Vulnerability Alerts
+
+Like pip's yanked-package warnings, every vulnerability finding includes a direct link to the Trustify advisory page. This applies to upload gate errors, download guard blocks, scanner logs, and advisory records.
+
+**Upload gate** — when uploading a vulnerable package, the error includes CVE IDs and Trustify URLs:
+
+```
+$ pulp python content upload \
+    --relative-path urllib3-2.6.2-py3-none-any.whl \
+    --file urllib3-2.6.2-py3-none-any.whl \
+    --repository local-pypi
+Error: Task failed: Blocked due to CVE: CVE-2026-21441, CVE-2026-44432, CVE-2026-44431
+Details:
+  https://trustify.example.com/vulnerabilities/CVE-2026-21441
+  https://trustify.example.com/vulnerabilities/CVE-2026-44432
+  https://trustify.example.com/vulnerabilities/CVE-2026-44431
+```
+
+**Download guard** — when `pip install` hits a vulnerable package on a Pulp-hosted index, the download is blocked with a 403. The enriched details appear in the content app logs:
+
+```
+$ pip install --no-deps \
+    --index-url https://pulp.example.com/pulp/content/local-pypi/simple/ \
+    urllib3==2.6.2
+ERROR: HTTP error 403 while getting .../urllib3-2.6.2-py3-none-any.whl
+ERROR: Could not install requirement urllib3==2.6.2 ... 403 Client Error: Forbidden
+```
+
+Content app log (`kubectl logs deployment/pulp-content`):
+
+```
+pulp_trustify.gate: Blocking 'pkg:pypi/urllib3@2.6.2': CVE-2026-21441, CVE-2026-44432, CVE-2026-44431
+Details:
+  https://trustify.example.com/vulnerabilities/CVE-2026-21441
+  https://trustify.example.com/vulnerabilities/CVE-2026-44432
+  https://trustify.example.com/vulnerabilities/CVE-2026-44431
+```
+
+**Scanner worker logs** — enriched output with severity and clickable URLs:
+
+```
+pulp_trustify...scanner: PURL 'pkg:pypi/urllib3@2.6.2' has 1 CVEs at or above 'critical':
+  CVE-2024-12345 (critical)
+    https://trustify.example.com/vulnerabilities/CVE-2024-12345
+```
+
+**Advisory API** — the `details` field carries per-CVE enrichment (see [Scanner Actions](#scanner-actions)).
+
+Enrichment is controlled by `TRUSTIFY_ENRICH_DETAILS` (default: `True`). Set to `False` to revert to CVE-ID-only messages. URLs are constructed locally from `TRUSTIFY_URL` — no extra API calls.
+
 #### Verify Detection Mode
 
 Check which mode the guard is using by examining Trustify's data:
@@ -445,10 +515,7 @@ curl -X POST https://trustify.example.com/api/v2/vulnerability/analyze \
 
 ## Logging and Observability
 
-The plugin emits structured logs through Python's standard
-`logging` module, using pulpcore's existing `console` handler
-and `simple` formatter with correlation IDs. No custom handlers
-or formatters are introduced.
+The plugin emits structured logs through Python's standard `logging` module, using pulpcore's existing `console` handler and `simple` formatter with correlation IDs. No custom handlers or formatters are introduced.
 
 ### Configuration
 
@@ -462,15 +529,14 @@ PULP_TRUSTIFY_LOG_LEVEL=DEBUG
 TRUSTIFY_LOG_LEVEL = "DEBUG"
 ```
 
-Valid levels: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`
-(default: `INFO`).
+Valid levels: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` (default: `INFO`).
 
 ### Log Content by Level
 
 | Level | What is logged |
 |:------|:---------------|
 | `DEBUG` | PURL resolution, batch boundaries, API endpoints called, OIDC token refresh, analyze vs. search fallback decisions, parser registration |
-| `INFO` | Scan started/completed, content blocked (with CVE IDs), guard decisions, task dispatch, client initialization, plugin startup |
+| `INFO` | Scan started/completed, content blocked (with CVE IDs and Trustify URLs), guard decisions, task dispatch, client initialization, plugin startup |
 | `WARNING` | Fail-open events (Trustify API unreachable), upload rejections, OIDC token fetch failures, API request errors |
 
 ### Debug a Blocked Download
@@ -509,5 +575,8 @@ Expected progression:
 pulp_trustify...scanner: Scan task started for repository <uuid>
 pulp_trustify...scanner: Scanning content for vulnerabilities
 pulp_trustify.scanner: Processing batch 1/5 (100 PURLs)
+pulp_trustify...scanner: PURL 'pkg:pypi/urllib3@2.6.2' has 1 CVEs at or above 'critical':
+  CVE-2024-12345 (critical)
+    https://trustify.example.com/vulnerabilities/CVE-2024-12345
 pulp_trustify...scanner: removing 3 vulnerable items
 ```

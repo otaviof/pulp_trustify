@@ -44,6 +44,10 @@ class _CAAdapter(HTTPAdapter):
         return super().init_poolmanager(*args, **kwargs)
 
 
+def build_trustify_url(base_url: str, cve_id: str) -> str:
+    return f"{base_url.rstrip('/')}/vulnerabilities/{cve_id}"
+
+
 class TrustifyError(Exception):
     """Raised when the Trustify API is unreachable
     or returns an error."""

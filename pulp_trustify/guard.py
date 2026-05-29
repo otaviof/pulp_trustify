@@ -14,6 +14,7 @@ def permit_request(
     path: str,
     threshold: str,
     fail_open: bool,
+    base_url: str = "",
 ) -> None:
     """Gate a download request by URL path.
 
@@ -36,4 +37,4 @@ def permit_request(
         threshold,
         fail_open,
     )
-    gate_purl(client, purl, threshold, fail_open)
+    gate_purl(client, purl, threshold, fail_open, base_url=base_url)

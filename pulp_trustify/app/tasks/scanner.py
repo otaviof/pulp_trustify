@@ -69,6 +69,15 @@ def _record_advisories(results, repository, threshold, actions):
             severity=threshold,
             detection_mode=r.detection_mode,
             action=action,
+            details=[
+                {
+                    "cve_id": d.cve_id,
+                    "severity": d.severity,
+                    "trustify_url": d.trustify_url,
+                    "description": d.description,
+                }
+                for d in r.details
+            ],
         )
         for r in results
         if r.blocked
@@ -127,6 +136,9 @@ def scan_repository(repository_pk: str) -> None:
         threshold=settings.TRUSTIFY_SEVERITY_THRESHOLD,
         fail_open=settings.TRUSTIFY_FAIL_OPEN,
         batch_size=settings.TRUSTIFY_BATCH_SIZE,
+        base_url=(
+            settings.TRUSTIFY_URL if settings.TRUSTIFY_ENRICH_DETAILS else ""
+        ),
     )
 
     blocked = [r for r in results if r.blocked]
@@ -138,6 +150,26 @@ def scan_repository(repository_pk: str) -> None:
             repository.pk,
         )
         return
+
+    for r in blocked:
+        if r.details:
+            cve_lines = "\n  ".join(
+                f"{d.cve_id} ({d.severity})\n    {d.trustify_url}"
+                for d in r.details
+            )
+            logger.info(
+                "PURL '%s' has %d CVEs at or above '%s':\n  %s",
+                r.purl,
+                len(r.details),
+                settings.TRUSTIFY_SEVERITY_THRESHOLD,
+                cve_lines,
+            )
+        else:
+            logger.info(
+                "PURL '%s' blocked: %s",
+                r.purl,
+                ", ".join(r.cve_ids),
+            )
 
     blocked_qs = latest_version.content.filter(pk__in=blocked_pks)
     actions: list[str] = []

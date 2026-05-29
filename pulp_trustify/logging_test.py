@@ -170,6 +170,7 @@ def _make_settings(**overrides):
         "TRUSTIFY_URL": "https://trustify.example.com",
         "TRUSTIFY_SEVERITY_THRESHOLD": "critical",
         "TRUSTIFY_FAIL_OPEN": False,
+        "TRUSTIFY_ENRICH_DETAILS": True,
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)

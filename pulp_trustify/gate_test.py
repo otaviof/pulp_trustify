@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
+
 import pytest
 
-from pulp_trustify.client.client import TrustifyError
+from pulp_trustify.client.client import TrustifyError, build_trustify_url
 from pulp_trustify.gate import gate_purl
+
+BASE_URL = "https://trustify.example.com"
 
 
 class _FakeClient:
@@ -50,13 +54,18 @@ def test_blocks_vulnerable_purl():
     }
     client = _FakeClient(response=response)
 
-    with pytest.raises(PermissionError, match="CVE-2023-1234"):
+    with pytest.raises(PermissionError) as exc_info:
         gate_purl(
             client=client,
             purl="pkg:pypi/requests@2.28.0",
             threshold="critical",
             fail_open=False,
+            base_url=BASE_URL,
         )
+
+    error_msg = str(exc_info.value)
+    assert "CVE-2023-1234" in error_msg
+    assert "\n" not in error_msg
 
 
 def test_allows_clean_purl():
@@ -76,6 +85,7 @@ def test_allows_clean_purl():
         purl="pkg:pypi/requests@2.32.0",
         threshold="critical",
         fail_open=False,
+        base_url=BASE_URL,
     )
 
 
@@ -88,6 +98,7 @@ def test_fail_open_on_api_error():
         purl="pkg:pypi/requests@2.28.0",
         threshold="critical",
         fail_open=True,
+        base_url=BASE_URL,
     )
 
 
@@ -101,6 +112,7 @@ def test_fail_closed_on_api_error():
             purl="pkg:pypi/requests@2.28.0",
             threshold="critical",
             fail_open=False,
+            base_url=BASE_URL,
         )
 
 
@@ -126,6 +138,7 @@ def test_below_threshold_not_blocked():
         purl="pkg:pypi/requests@2.28.0",
         threshold="critical",
         fail_open=False,
+        base_url=BASE_URL,
     )
 
 
@@ -151,13 +164,18 @@ def test_fallback_blocks_vulnerable():
         search_response=search_response,
     )
 
-    with pytest.raises(PermissionError, match="CVE-2026-21441"):
+    with pytest.raises(PermissionError) as exc_info:
         gate_purl(
             client=client,
             purl="pkg:pypi/urllib3@2.6.2",
             threshold="high",
             fail_open=False,
+            base_url=BASE_URL,
         )
+
+    error_msg = str(exc_info.value)
+    assert "CVE-2026-21441" in error_msg
+    assert "\n" not in error_msg
 
 
 def test_fallback_allows_fixed_version():
@@ -187,4 +205,93 @@ def test_fallback_allows_fixed_version():
         purl="pkg:pypi/urllib3@2.6.3",
         threshold="high",
         fail_open=False,
+        base_url=BASE_URL,
     )
+
+
+def testbuild_trustify_url():
+    """Build Trustify URL from base URL and CVE ID."""
+    url = build_trustify_url("https://trustify.example.com", "CVE-2023-1234")
+    assert url == "https://trustify.example.com/vulnerabilities/CVE-2023-1234"
+
+
+def test_build_trustify_url_strips_trailing_slash():
+    """Handle trailing slash on base URL."""
+    url = build_trustify_url(
+        "https://trustify.example.com/",
+        "CVE-2023-1234",
+    )
+    assert url == "https://trustify.example.com/vulnerabilities/CVE-2023-1234"
+
+
+def test_blocks_with_enriched_log(caplog):
+    """Verify enriched URLs appear in log output."""
+    response = {
+        "items": [
+            {
+                "purl": "pkg:pypi/requests@2.28.0",
+                "details": [
+                    {
+                        "entry": {"cve": "CVE-2023-1234"},
+                        "base_score": {"severity": "critical"},
+                    },
+                    {
+                        "entry": {"cve": "CVE-2023-5678"},
+                        "base_score": {"severity": "high"},
+                    },
+                ],
+            }
+        ],
+    }
+    client = _FakeClient(response=response)
+
+    with caplog.at_level(logging.INFO, logger="pulp_trustify"):
+        with pytest.raises(PermissionError) as exc_info:
+            gate_purl(
+                client=client,
+                purl="pkg:pypi/requests@2.28.0",
+                threshold="high",
+                fail_open=False,
+                base_url=BASE_URL,
+            )
+
+    error_msg = str(exc_info.value)
+    assert "CVE-2023-1234" in error_msg
+    assert "CVE-2023-5678" in error_msg
+    assert "\n" not in error_msg
+
+    log_text = caplog.text
+    assert f"{BASE_URL}/vulnerabilities/CVE-2023-1234" in log_text
+    assert f"{BASE_URL}/vulnerabilities/CVE-2023-5678" in log_text
+
+
+def test_blocks_without_base_url():
+    """Verify original format when base_url is empty."""
+    response = {
+        "items": [
+            {
+                "purl": "pkg:pypi/requests@2.28.0",
+                "details": [
+                    {
+                        "entry": {"cve": "CVE-2023-1234"},
+                        "base_score": {"severity": "critical"},
+                    }
+                ],
+            }
+        ],
+    }
+    client = _FakeClient(response=response)
+
+    with pytest.raises(PermissionError) as exc_info:
+        gate_purl(
+            client=client,
+            purl="pkg:pypi/requests@2.28.0",
+            threshold="critical",
+            fail_open=False,
+            base_url="",
+        )
+
+    error_msg = str(exc_info.value)
+    assert "CVE-2023-1234" in error_msg
+    assert "Details:" not in error_msg
+    assert "vulnerabilities" not in error_msg

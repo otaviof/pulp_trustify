@@ -72,6 +72,9 @@ class TrustifyGuard(ContentGuard):
             path=request.path,
             threshold=settings.TRUSTIFY_SEVERITY_THRESHOLD,
             fail_open=settings.TRUSTIFY_FAIL_OPEN,
+            base_url=(
+                settings.TRUSTIFY_URL if settings.TRUSTIFY_ENRICH_DETAILS else ""
+            ),
         )
 
     class Meta(ContentGuard.Meta):
@@ -89,6 +92,7 @@ class ScanAdvisory(Model):
     content_pk = UUIDField()
     purl = CharField(max_length=512)
     cve_ids = JSONField(default=list)
+    details = JSONField(default=list)
     severity = CharField(max_length=16)
     detection_mode = CharField(max_length=16)
     action = CharField(max_length=64)

@@ -5,6 +5,7 @@ import logging
 from pulp_trustify.client.client import (
     TrustifyError,
     VulnerabilityChecker,
+    build_trustify_url,
 )
 from pulp_trustify.policy import filter_vulnerabilities
 from pulp_trustify.version import (
@@ -97,6 +98,7 @@ def gate_purl(
     purl: str,
     threshold: str,
     fail_open: bool,
+    base_url: str = "",
 ) -> None:
     """Check a PURL against Trustify; raise on vulnerability.
 
@@ -109,8 +111,24 @@ def gate_purl(
     """
     cve_ids = check_purl(client, purl, threshold, fail_open)
     if cve_ids:
-        logger.info("Blocking '%s': %s", purl, ", ".join(cve_ids))
-        raise PermissionError(f"{MSG_BLOCKED_CVE}: {', '.join(cve_ids)}")
+        msg = f"{MSG_BLOCKED_CVE}: {', '.join(cve_ids)}"
+        if base_url:
+            urls = "\n  ".join(
+                build_trustify_url(base_url, cve) for cve in cve_ids
+            )
+            logger.info(
+                "Blocking '%s': %s\nDetails:\n  %s",
+                purl,
+                ", ".join(cve_ids),
+                urls,
+            )
+        else:
+            logger.info(
+                "Blocking '%s': %s",
+                purl,
+                ", ".join(cve_ids),
+            )
+        raise PermissionError(msg)
     logger.debug("Allowing '%s' (no CVEs above '%s')", purl, threshold)
 
 

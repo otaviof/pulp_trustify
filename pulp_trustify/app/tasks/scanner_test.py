@@ -15,6 +15,8 @@ def _make_settings(**overrides):
         "TRUSTIFY_SCAN_QUARANTINE_REPO": "",
         "TRUSTIFY_SCAN_LABEL_CONTENT": True,
         "TRUSTIFY_SCAN_ADVISORY": True,
+        "TRUSTIFY_URL": "https://trustify.example.com",
+        "TRUSTIFY_ENRICH_DETAILS": True,
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -80,7 +82,7 @@ def test_removes_vulnerable_content(
     mock_record_advisories,
 ):
     """Create new version removing vulnerable content."""
-    from pulp_trustify.scanner import ScanResult
+    from pulp_trustify.scanner import ScanResult, VulnerabilityDetail
 
     c1 = _make_content("pk1", "vuln-pkg", "1.0")
     c2 = _make_content("pk2", "safe-pkg", "2.0")
@@ -94,6 +96,16 @@ def test_removes_vulnerable_content(
             purl="pkg:pypi/vuln-pkg@1.0",
             cve_ids=["CVE-2023-001"],
             blocked=True,
+            details=[
+                VulnerabilityDetail(
+                    cve_id="CVE-2023-001",
+                    severity="critical",
+                    trustify_url=(
+                        "https://trustify.example.com/vulnerabilities/"
+                        "CVE-2023-001"
+                    ),
+                )
+            ],
         ),
         ScanResult(
             content_pk="pk2",
@@ -104,6 +116,16 @@ def test_removes_vulnerable_content(
             purl="pkg:pypi/vuln-other@3.0",
             cve_ids=["CVE-2023-002"],
             blocked=True,
+            details=[
+                VulnerabilityDetail(
+                    cve_id="CVE-2023-002",
+                    severity="critical",
+                    trustify_url=(
+                        "https://trustify.example.com/vulnerabilities/"
+                        "CVE-2023-002"
+                    ),
+                )
+            ],
         ),
     ]
 
@@ -310,7 +332,7 @@ def test_batch_size_from_settings(
 
 def _setup_vulnerable_scan(mock_content_to_purl, mock_scan_content):
     """Set up mocks for a scan that finds vulnerable content."""
-    from pulp_trustify.scanner import ScanResult
+    from pulp_trustify.scanner import ScanResult, VulnerabilityDetail
 
     c1 = _make_content("pk1", "vuln-pkg", "1.0")
     c2 = _make_content("pk2", "safe-pkg", "2.0")
@@ -324,6 +346,16 @@ def _setup_vulnerable_scan(mock_content_to_purl, mock_scan_content):
             cve_ids=["CVE-2023-001"],
             blocked=True,
             detection_mode="analyze",
+            details=[
+                VulnerabilityDetail(
+                    cve_id="CVE-2023-001",
+                    severity="critical",
+                    trustify_url=(
+                        "https://trustify.example.com/vulnerabilities/"
+                        "CVE-2023-001"
+                    ),
+                )
+            ],
         ),
         ScanResult(
             content_pk="pk2",
@@ -691,3 +723,173 @@ def test_get_repository_uses_cast():
     repo_mock.objects.get.assert_called_once_with(pk="test-pk")
     mock_repo.cast.assert_called_once()
     assert result is mock_casted_repo
+
+
+@patch("pulp_trustify.app.tasks.scanner._record_advisories")
+@patch("pulp_trustify.app.tasks.scanner._label_content")
+@patch("pulp_trustify.app.tasks.scanner.scan_content")
+@patch("pulp_trustify.app.tasks.scanner.content_to_purl")
+@patch.dict(
+    sys.modules,
+    {
+        **_fake_pulpcore(),
+        **_fake_pulp_python(),
+        **_fake_app_models(),
+    },
+)
+@patch("django.conf.settings", _make_settings())
+def test_record_advisories_stores_details(
+    mock_content_to_purl,
+    mock_scan_content,
+    mock_label_content,
+    mock_record_advisories,
+):
+    """Verify details dict serialization in advisory records."""
+    from pulp_trustify.scanner import ScanResult, VulnerabilityDetail
+
+    c1 = _make_content("pk1", "vuln-pkg", "1.0")
+
+    mock_content_to_purl.return_value = "pkg:pypi/vuln-pkg@1.0"
+
+    mock_scan_content.return_value = [
+        ScanResult(
+            content_pk="pk1",
+            purl="pkg:pypi/vuln-pkg@1.0",
+            cve_ids=["CVE-2023-001"],
+            blocked=True,
+            detection_mode="analyze",
+            details=[
+                VulnerabilityDetail(
+                    cve_id="CVE-2023-001",
+                    severity="critical",
+                    trustify_url=(
+                        "https://trustify.example.com/vulnerabilities/"
+                        "CVE-2023-001"
+                    ),
+                    description="Test vulnerability",
+                )
+            ],
+        ),
+    ]
+
+    mock_repo = MagicMock()
+    mock_repo.pk = "repo-pk"
+    mock_version = MagicMock()
+    mock_version.content.all.return_value = [c1]
+    mock_repo.latest_version.return_value = mock_version
+
+    new_version_ctx = MagicMock()
+    mock_repo.new_version.return_value.__enter__ = lambda _: new_version_ctx
+    mock_repo.new_version.return_value.__exit__ = lambda *_: None
+
+    from pulp_trustify.app.tasks.scanner import scan_repository
+
+    with patch(
+        "pulp_trustify.app.tasks.scanner._get_repository",
+        return_value=mock_repo,
+    ):
+        scan_repository(repository_pk="repo-pk")
+
+    mock_record_advisories.assert_called_once()
+    call_args = mock_record_advisories.call_args
+    results = call_args[0][0]
+    assert len(results) == 1
+    assert len(results[0].details) == 1
+    detail = results[0].details[0]
+    assert detail.cve_id == "CVE-2023-001"
+    assert detail.severity == "critical"
+    assert (
+        detail.trustify_url
+        == "https://trustify.example.com/vulnerabilities/CVE-2023-001"
+    )
+    assert detail.description == "Test vulnerability"
+
+
+@patch("pulp_trustify.app.tasks.scanner._record_advisories")
+@patch("pulp_trustify.app.tasks.scanner._label_content")
+@patch("pulp_trustify.app.tasks.scanner.scan_content")
+@patch("pulp_trustify.app.tasks.scanner.content_to_purl")
+@patch.dict(
+    sys.modules,
+    {
+        **_fake_pulpcore(),
+        **_fake_pulp_python(),
+        **_fake_app_models(),
+    },
+)
+@patch("django.conf.settings", _make_settings())
+def test_enriched_log_output(
+    mock_content_to_purl,
+    mock_scan_content,
+    mock_label_content,
+    mock_record_advisories,
+    caplog,
+):
+    """Verify log output includes CVE+severity+URL."""
+    import logging
+
+    from pulp_trustify.scanner import ScanResult, VulnerabilityDetail
+
+    caplog.set_level(logging.INFO)
+
+    c1 = _make_content("pk1", "vuln-pkg", "1.0")
+
+    mock_content_to_purl.return_value = "pkg:pypi/vuln-pkg@1.0"
+
+    mock_scan_content.return_value = [
+        ScanResult(
+            content_pk="pk1",
+            purl="pkg:pypi/vuln-pkg@1.0",
+            cve_ids=["CVE-2023-001", "CVE-2023-002"],
+            blocked=True,
+            detection_mode="analyze",
+            details=[
+                VulnerabilityDetail(
+                    cve_id="CVE-2023-001",
+                    severity="critical",
+                    trustify_url=(
+                        "https://trustify.example.com/vulnerabilities/"
+                        "CVE-2023-001"
+                    ),
+                ),
+                VulnerabilityDetail(
+                    cve_id="CVE-2023-002",
+                    severity="high",
+                    trustify_url=(
+                        "https://trustify.example.com/vulnerabilities/"
+                        "CVE-2023-002"
+                    ),
+                ),
+            ],
+        ),
+    ]
+
+    mock_repo = MagicMock()
+    mock_repo.pk = "repo-pk"
+    mock_version = MagicMock()
+    mock_version.content.all.return_value = [c1]
+    mock_repo.latest_version.return_value = mock_version
+
+    new_version_ctx = MagicMock()
+    mock_repo.new_version.return_value.__enter__ = lambda _: new_version_ctx
+    mock_repo.new_version.return_value.__exit__ = lambda *_: None
+
+    from pulp_trustify.app.tasks.scanner import scan_repository
+
+    with patch(
+        "pulp_trustify.app.tasks.scanner._get_repository",
+        return_value=mock_repo,
+    ):
+        scan_repository(repository_pk="repo-pk")
+
+    log_output = caplog.text
+    assert "CVE-2023-001" in log_output
+    assert "critical" in log_output
+    assert (
+        "https://trustify.example.com/vulnerabilities/CVE-2023-001" in log_output
+    )
+    assert "CVE-2023-002" in log_output
+    assert "high" in log_output
+    assert (
+        "https://trustify.example.com/vulnerabilities/CVE-2023-002" in log_output
+    )

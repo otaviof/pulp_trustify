@@ -38,6 +38,7 @@ class ScanAdvisorySerializer(serializers.ModelSerializer):
             "content_pk",
             "purl",
             "cve_ids",
+            "details",
             "severity",
             "detection_mode",
             "action",
