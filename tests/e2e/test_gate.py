@@ -8,6 +8,7 @@ import pytest
 def test_gate_rejects_vulnerable_upload(
     pulp_api,
     python_repository,
+    wait_for_task,
 ):
     repo_href, _ = python_repository
     wheel = "tests/e2e/fixtures/urllib3-2.6.2-py3-none-any.whl"
@@ -23,9 +24,10 @@ def test_gate_rejects_vulnerable_upload(
             files={"file": f},
         )
 
-    assert resp.status_code == 400, (
-        f"Expected 400 for vulnerable upload, got {resp.status_code}"
+    assert resp.status_code == 202, (
+        f"Expected 202 Accepted, got {resp.status_code}"
     )
 
-    error_msg = str(resp.json())
-    assert "CVE" in error_msg, "Error should contain CVE IDs"
+    task_href = resp.json()["task"]
+    with pytest.raises(RuntimeError, match="CVE"):
+        wait_for_task(task_href, timeout=60)

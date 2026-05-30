@@ -41,27 +41,34 @@ Content remains in repository throughout all tests.
 ### Phase 2: Gate Enabled (restart required)
 
 **Configuration:**
-- Restart Pulp with `GATE_UPLOADS = True`
+- Stop Pulp + runner containers
+- Recreate with [`compose.e2e.gate.yml`](compose.e2e.gate.yml) override (sets `GATE_UPLOADS = True`)
+- Run orphan cleanup (removes content from phase 1 so `pre_save` fires on fresh upload)
+- Re-seed advisories (Trustify data may be lost during container recreation)
 
 **Tests:**
 1. Attempt upload of vulnerable package
-2. Verify HTTP 400 rejection with CVE IDs in error message
+2. Verify HTTP 202 Accepted (upload is async)
+3. Wait for task — verify it fails with CVE IDs in the error description
+
+> **Note:** Pulp uploads are asynchronous. The POST returns 202 with a task href. The gate's `pre_save` signal fires inside the Pulp worker when the task executes. If the gate blocks, the *task* fails — not the HTTP request.
 
 ```mermaid
 graph TD
     A[Phase 1: Defaults<br/>GATE_UPLOADS=false] --> B[Upload vulnerable package]
     B --> C[Scan repository]
-    C --> D[Verify advisories created]
-    D --> E[Verify trustify.* labels]
-    E --> F[Test guard: 403 on download]
-    F --> G[Restart Pulp<br/>GATE_UPLOADS=true]
-    G --> H[Phase 2: Gate On]
-    H --> I[Attempt upload]
-    I --> J[Verify 400 rejection<br/>with CVE IDs]
+    C --> D[Verify advisories + labels]
+    D --> E[Test guard: 403 on download]
+    E --> F[Restart Pulp<br/>compose.e2e.gate.yml]
+    F --> F1[Orphan cleanup]
+    F1 --> F2[Re-seed advisories]
+    F2 --> G[Phase 2: Gate On]
+    G --> H[Attempt upload → 202]
+    H --> I[Wait for task failure<br/>with CVE IDs]
     
     style A fill:#e1f5ff
-    style H fill:#ffe1e1
-    style G fill:#fff4e1
+    style G fill:#ffe1e1
+    style F fill:#fff4e1
 ```
 
 ## Running Tests Locally
@@ -85,17 +92,28 @@ poe e2e
 ```
 
 This runs:
-1. `e2e-up`: starts PostgreSQL + Trustify + Pulp, seeds test advisories
-2. `test-e2e`: phase 1 tests (status, scan, guard)
-3. `e2e-restart-pulp`: restarts Pulp with `GATE_UPLOADS=true`
-4. `test-e2e-gate`: phase 2 tests (upload gate)
-5. `e2e-down`: tears down infrastructure
+1. `e2e-up`: builds images, starts compose stack, seeds OSV advisories
+2. `test-e2e`: phase 1 tests (status, scan, guard) — 12 tests
+3. `e2e-restart-pulp`: recreates Pulp with gate override, orphan cleanup, re-seed
+4. `test-e2e-gate`: phase 2 tests (upload gate) — 1 test
+5. `e2e-down`: tears down stack and volumes
 
 **For Docker users (CI default):**
 
 ```bash
 COMPOSE="docker compose" poe e2e
 ```
+
+### Key Files
+
+| File | Purpose |
+|:-----|:--------|
+| [`workflow.py`](workflow.py) | Orchestrator with subcommands: up, down, restart-pulp, seed, cleanup, status |
+| [`compose.e2e.yml`](compose.e2e.yml) | Base compose stack (PostgreSQL, Trustify, Pulp, runner) |
+| [`compose.e2e.gate.yml`](compose.e2e.gate.yml) | Override that sets `GATE_UPLOADS=True` for phase 2 |
+| [`e2e/conftest.py`](e2e/conftest.py) | E2E fixtures (repository + TrustifyGuard + distribution) |
+| [`e2e/fixtures/`](e2e/fixtures/) | PYSEC advisory JSONs and test wheel |
+| [`conftest.py`](conftest.py) | Shared fixtures (PulpAPI, wait_for_task, upload_package) |
 
 ### Manual Infrastructure Control
 
@@ -154,7 +172,7 @@ The test suite provides reusable fixtures for common operations:
 
 - **Connection fixtures** (`trustify_client`, `pulp_api`): Pre-configured clients for Trustify and Pulp APIs with auth
 - **Task helpers** (`wait_for_task`, `upload_package`): Reusable callables for async task polling and package uploads
-- **Repository fixtures** (`python_repository`, `uploaded_vulnerable`): Auto-cleanup test data with urllib3-2.6.2 wheel as deterministic vulnerable package
+- **Repository fixtures** (`python_repository`, `uploaded_vulnerable`): Auto-cleanup test data with TrustifyGuard attached to the distribution and urllib3-2.6.2 wheel as deterministic vulnerable package
 
 See `pyproject.toml` and `tests/e2e/conftest.py` for fixture implementation details.
 

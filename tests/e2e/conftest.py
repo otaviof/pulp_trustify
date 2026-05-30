@@ -13,6 +13,11 @@ def python_repository(pulp_api, wait_for_task):
     repo_resp.raise_for_status()
     repo_href = repo_resp.json()["pulp_href"]
 
+    guard_url = f"{pulp_api.api_url}/contentguards/trustify/guard/"
+    guard_resp = pulp_api.post(guard_url, json={"name": "test-guard"})
+    guard_resp.raise_for_status()
+    guard_href = guard_resp.json()["pulp_href"]
+
     distro_url = f"{pulp_api.api_url}/distributions/python/pypi/"
     distro_resp = pulp_api.post(
         distro_url,
@@ -20,6 +25,7 @@ def python_repository(pulp_api, wait_for_task):
             "name": "test-distro",
             "base_path": "test",
             "repository": repo_href,
+            "content_guard": guard_href,
         },
     )
     distro_resp.raise_for_status()
@@ -35,11 +41,12 @@ def python_repository(pulp_api, wait_for_task):
 
     yield repo_href, base_path
 
-    pulp_api.delete(pulp_api.href(repo_href))
     for item in distros:
         pulp_api.delete(
             pulp_api.href(item["pulp_href"]),
         )
+    pulp_api.delete(pulp_api.href(guard_href))
+    pulp_api.delete(pulp_api.href(repo_href))
 
 
 @pytest.fixture()
@@ -53,8 +60,11 @@ def uploaded_vulnerable(
     wheel = "tests/e2e/fixtures/urllib3-2.6.2-py3-none-any.whl"
     task_href = upload_package(repo_href, wheel)
     data = wait_for_task(task_href)
-    content_href = data.get(
-        "created_resources",
-        [None],
-    )[0]
+    content_href = next(
+        (r for r in data.get("created_resources", []) if "/content/" in r),
+        None,
+    )
+    assert content_href is not None, (
+        f"No content href in created_resources: {data.get('created_resources')}"
+    )
     return content_href

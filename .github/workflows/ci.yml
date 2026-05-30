@@ -3,9 +3,12 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: 
+    - main
+    - gha
   pull_request:
-    branches: [main]
+    branches: 
+    - main
 
 permissions:
   contents: read

@@ -15,7 +15,7 @@ def test_guard_blocks_vulnerable_content(
 
     download_url = (
         f"{pulp_api.origin}/pulp/content/"
-        f"{base_path}/simple/urllib3/"
+        f"{base_path}/"
         "urllib3-2.6.2-py3-none-any.whl"
     )
 

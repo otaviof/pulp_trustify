@@ -1,0 +1,5 @@
+---
+services:
+  pulp:
+    environment:
+      PULP_TRUSTIFY_GATE_UPLOADS: "True"
