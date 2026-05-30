@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.6.0",
+  "id": "PYSEC-2026-003",
+  "aliases": [
+    "CVE-2026-44432"
+  ],
+  "summary": "urllib3 TLS certificate validation bypass",
+  "details": "urllib3 before 2.7.0 does not properly validate TLS certificates in certain proxy configurations. Affected versions from 2.0.0 to before 2.7.0.",
+  "modified": "2026-01-15T00:00:00Z",
+  "published": "2026-01-10T00:00:00Z",
+  "severity": [
+    {
+      "type": "CVSS_V3",
+      "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:H/I:H/A:N"
+    }
+  ],
+  "affected": [
+    {
+      "package": {
+        "ecosystem": "PyPI",
+        "name": "urllib3"
+      },
+      "ranges": [
+        {
+          "type": "ECOSYSTEM",
+          "events": [
+            {
+              "introduced": "2.0.0"
+            },
+            {
+              "fixed": "2.7.0"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "references": [
+    {
+      "type": "ADVISORY",
+      "url": "https://github.com/pypa/advisory-database"
+    }
+  ]
+}

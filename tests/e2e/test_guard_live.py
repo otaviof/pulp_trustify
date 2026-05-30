@@ -4,6 +4,8 @@ import pytest
 
 from pulp_trustify.guard import permit_request
 
+VULNERABLE_PATH = "urllib3-2.6.2.tar.gz"
+
 
 @pytest.mark.e2e
 @pytest.mark.guard
@@ -26,7 +28,7 @@ def test_permit_blocks_vulnerable_package(
     with pytest.raises(PermissionError):
         permit_request(
             client=trustify_client,
-            path="urllib3-2.6.2.tar.gz",
+            path=VULNERABLE_PATH,
             threshold="medium",
             fail_open=False,
         )
@@ -41,7 +43,7 @@ def test_fallback_blocks_vulnerable_urllib3(
     with pytest.raises(PermissionError):
         permit_request(
             client=trustify_client,
-            path="urllib3-2.6.2.tar.gz",
+            path=VULNERABLE_PATH,
             threshold="high",
             fail_open=False,
         )

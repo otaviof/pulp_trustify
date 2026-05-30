@@ -7,10 +7,12 @@ import pytest
 @pytest.mark.scan
 def test_scan_dispatches_task(
     pulp_api,
+    python_repository,
     wait_for_task,
 ):
+    repo_href, _ = python_repository
     scan_url = f"{pulp_api.api_url}/trustify/scan/"
-    resp = pulp_api.post(scan_url)
+    resp = pulp_api.post(scan_url, json={"repository": repo_href})
     resp.raise_for_status()
     data = resp.json()
     assert "task" in data
@@ -21,11 +23,13 @@ def test_scan_dispatches_task(
 @pytest.mark.scan
 def test_scan_creates_advisory_records(
     pulp_api,
+    python_repository,
     uploaded_vulnerable,
     wait_for_task,
 ):
+    repo_href, _ = python_repository
     scan_url = f"{pulp_api.api_url}/trustify/scan/"
-    resp = pulp_api.post(scan_url)
+    resp = pulp_api.post(scan_url, json={"repository": repo_href})
     resp.raise_for_status()
     task_href = resp.json()["task"]
     wait_for_task(task_href, timeout=120)
@@ -41,13 +45,15 @@ def test_scan_creates_advisory_records(
 @pytest.mark.scan
 def test_scan_adds_labels_to_content(
     pulp_api,
+    python_repository,
     uploaded_vulnerable,
     wait_for_task,
 ):
+    repo_href, _ = python_repository
     content_href = uploaded_vulnerable
 
     scan_url = f"{pulp_api.api_url}/trustify/scan/"
-    resp = pulp_api.post(scan_url)
+    resp = pulp_api.post(scan_url, json={"repository": repo_href})
     resp.raise_for_status()
     task_href = resp.json()["task"]
     wait_for_task(task_href, timeout=120)

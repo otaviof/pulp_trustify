@@ -10,27 +10,38 @@ services:
       POSTGRES_USER: trustify
       POSTGRES_PASSWORD: trustify
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U trustify"]
+      test: 
+        - CMD-SHELL
+        - pg_isready -U trustify
       interval: 5s
       timeout: 5s
       retries: 5
 
   trustify:
     image: ghcr.io/trustification/trustd:latest
-    command: >-
-      api
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        trustd db
+        --db-host postgres
+        --db-name trustify
+        --db-user trustify
+        --db-password trustify
+        migrate &&
+        exec trustd api
         --auth-disabled
         --db-host postgres
         --db-name trustify
         --db-user trustify
         --db-password trustify
-        --infrastructure-bind 0.0.0.0:9010
         --http-server-bind-address 0.0.0.0
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/8080'"]
+      test: 
+        - CMD-SHELL
+        - bash -c 'echo > /dev/tcp/localhost/8080'
       interval: 5s
       timeout: 5s
       retries: 20
@@ -44,15 +55,17 @@ services:
       PULP_TRUSTIFY_API_VERSION: "v2"
       PULP_TRUSTIFY_ISSUER_URL: ""
       PULP_TRUSTIFY_CLIENT_SECRET: ""
-      PULP_TRUSTIFY_GATE_UPLOADS: "${PULP_TRUSTIFY_GATE_UPLOADS:-false}"
-      PULP_TRUSTIFY_SCAN_REMOVE_CONTENT: "${PULP_TRUSTIFY_SCAN_REMOVE_CONTENT:-false}"
-      PULP_TRUSTIFY_YANK_VULNERABLE: "${PULP_TRUSTIFY_YANK_VULNERABLE:-false}"
+      PULP_TRUSTIFY_GATE_UPLOADS: "${PULP_TRUSTIFY_GATE_UPLOADS:-False}"
+      PULP_TRUSTIFY_SCAN_REMOVE_CONTENT: "${PULP_TRUSTIFY_SCAN_REMOVE_CONTENT:-False}"
+      PULP_TRUSTIFY_YANK_VULNERABLE: "${PULP_TRUSTIFY_YANK_VULNERABLE:-False}"
       PULP_DEFAULT_ADMIN_PASSWORD: "password"
     depends_on:
       trustify:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:80/pulp/api/v3/status/ || exit 1"]
+      test: 
+        - CMD-SHELL
+        - curl -sf http://localhost:80/pulp/api/v3/status/ || exit 1
       interval: 5s
       timeout: 10s
       retries: 30
@@ -61,7 +74,9 @@ services:
     build:
       context: ..
       dockerfile: tests/Containerfile.e2e
-    entrypoint: ["sleep", "infinity"]
+    entrypoint: 
+      - sleep
+      - infinity
     environment:
       TRUSTIFY_URL: "http://trustify:8080"
       PULP_URL: "http://pulp:80"

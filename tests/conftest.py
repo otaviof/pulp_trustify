@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 import requests
@@ -40,32 +41,17 @@ class PulpAPI:
 
 @pytest.fixture()
 def trustify_client() -> TrustifyClient:
-    url = os.environ.get(
-        "TRUSTIFY_URL",
-        "http://localhost:9010",
-    )
+    url = os.environ.get("TRUSTIFY_URL", "http://localhost:9010")
     return TrustifyClient(url=url, issuer_url="")
 
 
 @pytest.fixture(scope="session")
 def pulp_api() -> PulpAPI:
-    origin = os.environ.get(
-        "PULP_URL",
-        "http://localhost:8080",
-    )
-    api_root = os.environ.get(
-        "PULP_API_ROOT",
-        "/pulp/",
-    )
+    origin = os.environ.get("PULP_URL", "http://localhost:8080")
+    api_root = os.environ.get("PULP_API_ROOT", "/pulp/")
     username = os.environ.get("PULP_USERNAME", "admin")
-    password = os.environ.get(
-        "PULP_PASSWORD",
-        "password",
-    )
-    verify_str = os.environ.get(
-        "PULP_VERIFY_SSL",
-        "false",
-    )
+    password = os.environ.get("PULP_PASSWORD", "password")
+    verify_str = os.environ.get("PULP_VERIFY_SSL", "false")
     verify = verify_str.lower() not in ("false", "0")
 
     session = requests.Session()
@@ -90,9 +76,7 @@ def wait_for_task(pulp_api):
     ) -> dict:
         start = time.time()
         while time.time() - start < timeout:
-            resp = pulp_api.get(
-                pulp_api.href(task_href),
-            )
+            resp = pulp_api.get(pulp_api.href(task_href))
             resp.raise_for_status()
             data = resp.json()
             state = data.get("state")
@@ -117,10 +101,14 @@ def upload_package(pulp_api):
         file_path: str,
     ) -> str:
         url = f"{pulp_api.api_url}/content/python/packages/"
+        filename = Path(file_path).name
         with open(file_path, "rb") as f:
             resp = pulp_api.post(
                 url,
-                data={"repository": repo_href},
+                data={
+                    "repository": repo_href,
+                    "relative_path": filename,
+                },
                 files={"file": f},
             )
             resp.raise_for_status()

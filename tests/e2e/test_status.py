@@ -18,10 +18,10 @@ def test_plugin_appears_in_status(
 
     versions = status.get("versions", [])
     plugin = next(
-        (v for v in versions if v.get("component") == "pulp_trustify"),
+        (v for v in versions if v.get("component") == "trustify"),
         None,
     )
 
-    assert plugin is not None, "pulp_trustify not found in status"
+    assert plugin is not None, "trustify not found in status"
     expected_version = version("pulp_trustify")
     assert plugin.get("version") == expected_version

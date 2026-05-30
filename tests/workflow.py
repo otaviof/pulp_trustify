@@ -18,7 +18,6 @@ SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 COMPOSE_FILE = SCRIPT_DIR / "compose.e2e.yml"
 FIXTURES_DIR = SCRIPT_DIR / "e2e" / "fixtures"
-ADVISORIES_ZIP = FIXTURES_DIR / "advisories.zip"
 
 
 def _require(*names: str) -> dict[str, str]:
@@ -114,16 +113,23 @@ def cmd_restart_pulp():
     """
     _require("COMPOSE")
 
-    print("==> Stopping pulp service")
-    run(_compose() + ["stop", "pulp"])
+    print("==> Stopping runner and pulp")
+    run(_compose() + ["stop", "runner", "pulp"])
 
-    print("==> Removing pulp container")
-    run(_compose() + ["rm", "-f", "pulp"])
+    print("==> Removing containers")
+    rm = subprocess.run(
+        _compose() + ["rm", "-f", "pulp", "runner"],
+        capture_output=True,
+    )
+    if rm.returncode != 0:
+        runtime = os.environ.get("CONTAINER_RUNTIME", "podman")
+        for svc in ("tests_runner_1", "tests_pulp_1"):
+            subprocess.run([runtime, "rm", "-f", svc], capture_output=True)
 
     print("==> Starting pulp with GATE_UPLOADS=true")
     gate_env = os.environ.copy()
-    gate_env["PULP_TRUSTIFY_GATE_UPLOADS"] = "true"
-    run(_compose() + ["up", "-d", "pulp"], env=gate_env)
+    gate_env["PULP_TRUSTIFY_GATE_UPLOADS"] = "True"
+    run(_compose() + ["up", "-d", "pulp", "runner"], env=gate_env)
 
     print("==> Waiting for pulp to become healthy")
     compose_exec(
@@ -136,25 +142,48 @@ def cmd_restart_pulp():
 
 
 def cmd_seed():
-    """POST advisories.zip to Trustify's dataset endpoint.
+    """Upload OSV advisories to Trustify.
 
-    Copies the advisory archive into the runner container
-    and uploads it via curl from inside the network.
+    When TRUSTIFY_URL is set (inside the compose network),
+    uploads directly via Python requests.  Otherwise execs
+    into the runner container to re-invoke this command.
     """
-    if not ADVISORIES_ZIP.exists():
-        print(
-            f"WARN: {ADVISORIES_ZIP} not found, skipping seed",
-        )
+    advisories = sorted(FIXTURES_DIR.glob("PYSEC-*.json"))
+    if not advisories:
+        print("WARN: no PYSEC-*.json in fixtures, skipping seed")
         return
 
-    print(f"==> Seeding {ADVISORIES_ZIP} to Trustify")
-    compose_exec(
-        "runner",
-        "curl -sf -X POST"
-        " -H 'Content-Type: application/zip'"
-        " --data-binary @/src/tests/e2e/fixtures/advisories.zip"
-        " http://trustify:8080/api/v2/dataset",
-    )
+    trustify_url = os.environ.get("TRUSTIFY_URL", "")
+    if trustify_url:
+        _upload_advisories(trustify_url)
+    else:
+        print("==> Seeding advisories via runner container")
+        compose_exec(
+            "runner",
+            "cd /src && python3 tests/workflow.py seed",
+        )
+
+
+def _upload_advisories(trustify_url: str):
+    """POST each advisory JSON to Trustify."""
+    import requests as http
+
+    advisories = sorted(FIXTURES_DIR.glob("PYSEC-*.json"))
+    if not advisories:
+        print("WARN: no PYSEC-*.json files found, skipping seed")
+        return
+
+    print(f"==> Seeding {len(advisories)} advisories to {trustify_url}")
+    for path in advisories:
+        url = f"{trustify_url}/api/v2/advisory?format=osv"
+        resp = http.post(
+            url,
+            data=path.read_bytes(),
+            headers={"Content-Type": "application/json"},
+        )
+        resp.raise_for_status()
+        doc_id = resp.json().get("document_id", "ok")
+        print(f"    {path.name}: {doc_id}")
     print("==> Seed successful")
 
 
@@ -182,10 +211,7 @@ def cmd_test():
     _require("COMPOSE")
     compose_exec(
         "runner",
-        "cd /src && pytest"
-        " -p no:pulp_rpm"
-        " -m 'e2e and not gate'"
-        " --verbose",
+        "cd /src && pytest -p no:pulp_rpm -m 'e2e and not gate' --verbose",
     )
 
 
@@ -194,10 +220,7 @@ def cmd_test_gate():
     _require("COMPOSE")
     compose_exec(
         "runner",
-        "cd /src && pytest"
-        " -p no:pulp_rpm"
-        " -m gate"
-        " --verbose",
+        "cd /src && pytest -p no:pulp_rpm -m gate --verbose",
     )
 
 

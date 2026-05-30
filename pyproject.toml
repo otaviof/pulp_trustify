@@ -171,6 +171,10 @@ help = "run E2E tests (status, scan, guard)"
 cmd = "tests/workflow.py test-gate"
 help = "run upload gate tests (requires GATE_UPLOADS=true)"
 
+[tool.poe.tasks.test-e2e-direct]
+help = "run E2E tests directly (no compose, for external environments)"
+cmd = "pytest -m 'e2e and not gate and not guard' --verbose"
+
 [tool.poe.tasks.e2e]
 sequence = [
     "e2e-up",

@@ -72,8 +72,8 @@ To run the full E2E pipeline locally:
 # Two-phase test (gate disabled → gate enabled)
 poe e2e
 
-# For Podman users
-COMPOSE="podman compose" poe e2e
+# For Docker users (CI default)
+COMPOSE="docker compose" poe e2e
 ```
 
 See [tests/README.md](tests/README.md) for E2E testing details, including the two-phase testing strategy, infrastructure setup, and troubleshooting.

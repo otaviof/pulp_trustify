@@ -16,7 +16,10 @@ def test_gate_rejects_vulnerable_upload(
     with open(wheel, "rb") as f:
         resp = pulp_api.post(
             url,
-            data={"repository": repo_href},
+            data={
+                "repository": repo_href,
+                "relative_path": wheel.rsplit("/", 1)[-1],
+            },
             files={"file": f},
         )
 

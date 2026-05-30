@@ -27,4 +27,5 @@ jobs:
           PULP_API_ROOT: ${{ inputs.pulp-api-root }}
           PULP_PASSWORD: ${{ secrets.PULP_PASSWORD }}
           PULP_VERIFY_SSL: "false"
-        run: poe test-e2e
+          TRUSTIFY_URL: ""
+        run: poe test-e2e-direct

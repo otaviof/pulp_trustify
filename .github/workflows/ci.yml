@@ -30,6 +30,8 @@ jobs:
   e2e:
     needs: test
     runs-on: ubuntu-latest
+    env:
+      COMPOSE: "docker compose"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-env

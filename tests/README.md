@@ -91,10 +91,10 @@ This runs:
 4. `test-e2e-gate`: phase 2 tests (upload gate)
 5. `e2e-down`: tears down infrastructure
 
-**For Podman users:**
+**For Docker users (CI default):**
 
 ```bash
-COMPOSE="podman compose" poe e2e
+COMPOSE="docker compose" poe e2e
 ```
 
 ### Manual Infrastructure Control
@@ -134,17 +134,17 @@ Expected output:
 
 ### Seed Test Data
 
-Test advisories live in `tests/e2e/fixtures/advisories.zip` and are seeded automatically during `e2e-up`. To manually reseed:
+Test advisories are OSV-format JSON files (`PYSEC-*.json`) in `tests/e2e/fixtures/`. They are seeded automatically during `e2e-up` via Trustify's `/api/v2/advisory?format=osv` endpoint. To manually reseed:
 
 ```bash
 python tests/workflow.py seed
 ```
 
-This uploads curated CVE data to Trustify's `/api/v2/dataset` endpoint for deterministic test results.
+The curated advisories cover `urllib3` CVEs for deterministic test results. The `requests` package is intentionally absent — tests rely on it being clean.
 
 ## Test Organization
 
-Tests are organized by feature using pytest markers. The root `conftest.py` registers markers for `e2e` (base marker), `status` (plugin registration), `scan` (scanner behavior), `guard` (download blocking), and `gate` (upload blocking). Phase 1 tests run with the default observe-only configuration and exercise status, scan, and guard features. Phase 2 tests run after restarting Pulp with gating enabled and verify upload rejection.
+Tests are organized by feature using pytest markers registered in `pyproject.toml`: `e2e` (base marker), `status` (plugin registration), `scan` (scanner behavior), `guard` (download blocking), and `gate` (upload blocking). Phase 1 tests run with the default observe-only configuration and exercise status, scan, and guard features. Phase 2 tests run after restarting Pulp with gating enabled and verify upload rejection.
 
 Tests live in `tests/e2e/` for infrastructure-level scenarios and co-located with source code (Go-style) for component-level scenarios. All E2E tests require live Pulp and Trustify services.
 
@@ -164,7 +164,7 @@ Set via poe tasks in `pyproject.toml` (can override via `.env` or shell):
 
 | Variable | Default | Description |
 |:---------|:--------|:------------|
-| `COMPOSE` | `docker compose` | Compose command (use `podman compose` for Podman) |
+| `COMPOSE` | `podman compose` | Compose command (`docker compose` on CI) |
 | `TRUSTIFY_URL` | `http://localhost:9010` | Trustify base URL |
 | `PULP_URL` | `http://localhost:8080` | Pulp base URL |
 | `PULP_API_ROOT` | `/pulp/` | Pulp API root prefix |

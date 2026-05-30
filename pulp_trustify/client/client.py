@@ -53,6 +53,44 @@ class TrustifyError(Exception):
     or returns an error."""
 
 
+def _extract_severity(detail: dict) -> str | None:
+    """Extract the highest severity from a Trustify detail."""
+    for affected in detail.get("status", {}).get("affected", []):
+        for score in affected.get("scores", []):
+            sev = score.get("severity")
+            if sev:
+                return sev
+    return None
+
+
+def _normalize_analyze(raw: dict) -> dict[str, Any]:
+    """Normalize Trustify analyze response.
+
+    Trustify returns ``{purl: {details: [...]}}``.
+    The gate layer expects ``{items: [{details: [...]}]}``.
+    """
+    if "items" in raw:
+        return raw
+    items: list[dict[str, Any]] = []
+    for purl_key, purl_data in raw.items():
+        if not isinstance(purl_data, dict):
+            continue
+        details: list[dict[str, Any]] = []
+        for d in purl_data.get("details", []):
+            details.append(
+                {
+                    "entry": {
+                        "cve": d.get("identifier", "unknown"),
+                    },
+                    "base_score": {
+                        "severity": _extract_severity(d),
+                    },
+                }
+            )
+        items.append({"details": details})
+    return {"items": items}
+
+
 class TrustifyClient:
     def __init__(
         self,
@@ -132,7 +170,8 @@ class TrustifyClient:
                 timeout=30,
             )
             response.raise_for_status()
-            result = response.json()
+            raw = response.json()
+            result = _normalize_analyze(raw)
             items_count = len(result.get("items", []))
             logger.debug("Analyze response: %d items", items_count)
             return result
