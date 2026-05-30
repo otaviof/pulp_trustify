@@ -23,14 +23,22 @@ All project tasks are managed via [Poe the Poet](https://poethepoet.naez.com/):
 | Task | Command | Description |
 |:-----|:--------|:------------|
 | Lint | `poe lint` | Run ruff linter checks |
-| Fix | `poe fix` | Auto-fix lint violations |
-| Format check | `poe fmt-check` | Verify code formatting |
+| Fix | `poe format-fix` | Auto-fix lint violations |
+| Format check | `poe format-check` | Verify code formatting |
 | Format | `poe fmt` | Apply code formatting |
-| Test | `poe test` | Run unit tests |
-| **All checks** | `poe check` | Lint + format + test (run before committing) |
+| Unit tests | `poe test-unit` | Run unit tests (`not e2e`) |
+| **All checks** | `poe check` | Lint + format + unit tests |
+| E2E tests | `poe test-e2e` | Phase 1: status, scan, guard |
+| E2E gate | `poe test-e2e-gate` | Phase 2: upload gate |
+| **Full E2E** | `poe e2e` | Two-phase pipeline (up → test → gate → down) |
+| E2E up | `poe e2e-up` | Start compose stack |
+| E2E down | `poe e2e-down` | Stop compose stack |
+| E2E restart | `poe e2e-restart-pulp` | Restart Pulp with gate on |
 | Image build | `poe image-build` | Build the plugin container image |
+| Image tag | `poe image-tag` | Tag image with project version |
 | Image push | `poe image-push` | Push image to the dev registry |
 | Deploy | `poe deploy` | Deploy to Kubernetes (see [deploy/README.md](deploy/README.md)) |
+| Version | `poe version` | Print project version |
 
 ## Before Submitting
 
@@ -56,7 +64,19 @@ All three must pass before opening a pull request.
 
 ## Testing
 
-Unit tests live side-by-side with source files using `*_test.py` naming. Run all unit tests with `poe test` or `pytest` directly. Integration tests require a live Trustify instance and are marked with `@pytest.mark.integration` (run with `pytest -m integration`).
+Unit tests live side-by-side with source files using `*_test.py` naming. Run with `poe test-unit`. E2E tests require a compose environment (PostgreSQL + Trustify + Pulp) and are selected by feature markers (`e2e`, `gate`, `guard`, `scan`, `status`).
+
+To run the full E2E pipeline locally:
+
+```bash
+# Two-phase test (gate disabled → gate enabled)
+poe e2e
+
+# For Podman users
+COMPOSE="podman compose" poe e2e
+```
+
+See [tests/README.md](tests/README.md) for E2E testing details, including the two-phase testing strategy, infrastructure setup, and troubleshooting.
 
 ## Architecture
 
@@ -75,6 +95,10 @@ Key sections:
 - `[tool.ruff]` — Linter and formatter config
 - `[tool.pytest.ini_options]` — Test discovery and options
 - `[tool.poe]` — Task definitions and environment variables
+
+## CI/CD
+
+GitHub Actions runs lint, test, build, E2E, and publish on every push to `main` and PR. See `.github/workflows/` for workflow definitions.
 
 ## Deployment
 

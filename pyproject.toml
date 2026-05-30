@@ -83,12 +83,16 @@ ban-relative-imports = "all"
 #
 
 [tool.pytest.ini_options]
-# unit tests live side-by-side with source (Go-style)
-testpaths = ["pulp_trustify"]
-# enforce *_test.py naming convention
-python_files = ["*_test.py"]
-# importlib mode avoids sys.path pollution with co-located tests
+testpaths = ["pulp_trustify", "tests"]
+python_files = ["*_test.py", "test_*.py"]
 addopts = ["--import-mode=importlib"]
+markers = [
+    "e2e: requires live Pulp + Trustify",
+    "gate: upload gate (requires GATE_UPLOADS=true)",
+    "guard: download guard",
+    "scan: scanner task",
+    "status: plugin registration",
+]
 
 #
 # Poe the Poet — task runner
@@ -110,37 +114,73 @@ default = "latest"
 default = "${IMAGE_REPOSITORY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:${IMAGE_TAG}"
 [tool.poe.env.CONTAINER_RUNTIME]
 default = "podman"
+[tool.poe.env.COMPOSE]
+default = "podman compose"
 
 [tool.poe.tasks]
 # run ruff linter checks
 lint = "ruff check ."
 # auto-fix linter violations where possible
-fix = "ruff check --fix ."
+format-fix = "ruff check --fix ."
 # check formatting without modifying files
-fmt-check = "ruff format --check ."
+format-check = "ruff format --check ."
 # apply formatting
 fmt = "ruff format ."
-# run unit tests
-[tool.poe.tasks.test]
-shell = "pytest -m 'not integration'; rc=$?; [ $rc -eq 5 ] && exit 0 || exit $rc"
-help = "run unit tests (excludes integration)"
 
-# run all checks (lint, format check and tests)
+[tool.poe.tasks.test-unit]
+help = "run unit tests"
+shell = "pytest -m 'not e2e'; rc=$?; [ $rc -eq 5 ] && exit 0 || exit $rc"
+
 [tool.poe.tasks.check]
-sequence = ["lint", "fmt-check", "test"]
-help = "run all CI checks (lint, format, test)"
+help = "run all CI checks (lint, format, unit tests)"
+sequence = ["lint", "format-check", "test-unit"]
 
-# builds the container image.
 [tool.poe.tasks.image-build]
-cmd = "${CONTAINER_RUNTIME} build -t ${IMAGE} -f Containerfile ."
 help = "build the plugin container image"
+cmd = "${CONTAINER_RUNTIME} build --tag ${IMAGE} --file Containerfile ."
 
-# pushes the container image.
+[tool.poe.tasks.image-tag]
+help = "tag the image with the project version"
+shell = "VERSION=$(poe --quiet version) && ${CONTAINER_RUNTIME} tag ${IMAGE} ${IMAGE_REPOSITORY}/${IMAGE_NAMESPACE}/${IMAGE_NAME}:${VERSION}"
+
 [tool.poe.tasks.image-push]
+help = "push the plugin image to the registry"
 cmd = "${CONTAINER_RUNTIME} push ${IMAGE} --tls-verify=false"
-help = "push the plugin image to the dev registry"
 
-# perform the deployment for testing and CI environments.
 [tool.poe.tasks.deploy]
-cmd = "deploy/deploy.py"
 help = "provision secrets and patch the Pulp CR"
+cmd = "deploy/deploy.py"
+
+[tool.poe.tasks.e2e-up]
+help = "start E2E infrastructure (PostgreSQL, Trustify and Pulp)"
+cmd = "tests/workflow.py up"
+
+[tool.poe.tasks.e2e-down]
+cmd = "tests/workflow.py down"
+help = "stop and remove E2E infrastructure"
+
+[tool.poe.tasks.e2e-restart-pulp]
+cmd = "tests/workflow.py restart-pulp"
+help = "restart Pulp with GATE_UPLOADS=true for phase 2"
+
+[tool.poe.tasks.test-e2e]
+cmd = "tests/workflow.py test"
+help = "run E2E tests (status, scan, guard)"
+
+[tool.poe.tasks.test-e2e-gate]
+cmd = "tests/workflow.py test-gate"
+help = "run upload gate tests (requires GATE_UPLOADS=true)"
+
+[tool.poe.tasks.e2e]
+sequence = [
+    "e2e-up",
+    "test-e2e",
+    "e2e-restart-pulp",
+    "test-e2e-gate",
+    "e2e-down",
+]
+help = "full two-phase E2E pipeline (requires Docker/Podman compose)"
+
+[tool.poe.tasks.version]
+help = "print the project version from pyproject.toml"
+cmd = "python -c \"import tomllib, pathlib; print(tomllib.load(pathlib.Path('pyproject.toml').open('rb'))['project']['version'])\""

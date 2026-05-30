@@ -354,7 +354,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, testin
 
 ## Deployment
 
-The plugin ships as a container image extending `pulp/pulp-minimal`. Deploy with:
+The plugin ships as a container image extending `pulp/pulp-minimal`. CI/CD publishes to `ghcr.io` on every push to `main`. For manual builds:
 
 ```bash
 poe image-build

@@ -1,0 +1,4 @@
+FROM pulp/pulp:latest
+COPY . /src
+RUN pip install /src[dev] && rm -rf /src/*.egg-info
+WORKDIR /src

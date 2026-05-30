@@ -5,22 +5,6 @@ import pytest
 from pulp_trustify.client.client import TrustifyClient, TrustifyError
 
 
-@pytest.mark.integration
-def test_analyze_with_real_oidc_token(
-    trustify_client,
-):
-    result = trustify_client.analyze(["pkg:pypi/requests@2.28.0"])
-    assert isinstance(result, dict)
-
-
-@pytest.mark.integration
-def test_analyze_response_structure(
-    trustify_client,
-):
-    result = trustify_client.analyze(["pkg:pypi/requests@2.28.0"])
-    assert isinstance(result, dict)
-
-
 def test_no_auth_header_when_issuer_url_empty():
     client = TrustifyClient(url="https://example.com", issuer_url="")
     headers = client._get_headers()

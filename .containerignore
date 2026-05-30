@@ -1,0 +1,11 @@
+.env
+.venv/
+.git/
+.github/
+.claude/
+.notes/
+deploy/
+tmp/
+*.pyc
+*.egg-info/
+__pycache__/

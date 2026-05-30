@@ -1,0 +1,30 @@
+---
+name: E2E (External)
+
+on:
+  workflow_dispatch:
+    inputs:
+      pulp-url:
+        description: Pulp base URL
+        required: true
+      pulp-api-root:
+        description: API root prefix
+        required: false
+        default: /pulp/
+      runner:
+        description: Runner label
+        required: false
+        default: self-hosted
+
+jobs:
+  e2e:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-env
+      - env:
+          PULP_URL: ${{ inputs.pulp-url }}
+          PULP_API_ROOT: ${{ inputs.pulp-api-root }}
+          PULP_PASSWORD: ${{ secrets.PULP_PASSWORD }}
+          PULP_VERIFY_SSL: "false"
+        run: poe test-e2e

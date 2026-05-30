@@ -1,0 +1,14 @@
+---
+name: Setup Python Environment
+description: Install Python and dev dependencies from pyproject.toml
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version-file: pyproject.toml
+        cache: pip
+
+    - shell: bash
+      run: pip install -e '.[dev]'
