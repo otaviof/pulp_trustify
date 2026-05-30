@@ -158,7 +158,7 @@ def _wait_for_pulp_health(timeout: int = 180):
             text=True,
         )
         for line in result.stdout.splitlines():
-            if "tests_pulp_1" in line and "healthy" in line:
+            if "pulp" in line and "healthy" in line and "postgres" not in line:
                 return
         time.sleep(5)
     print(
