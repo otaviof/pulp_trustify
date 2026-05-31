@@ -2,6 +2,8 @@
 
 A `ContentGuard` that blocks downloads of vulnerable packages at the Pulp Content App level. When attached to a distribution, every download request is checked against Trustify before the artifact is served.
 
+The guard covers the **present** — it blocks vulnerable packages right now, as clients request them.
+
 ## How It Works
 
 ```mermaid
@@ -23,6 +25,8 @@ sequenceDiagram
         P-->>C: 200 OK + artifact
     end
 ```
+
+Requests for files that no PURL parser recognizes (e.g., `.rpm`, `.deb`, metadata files) are **silently allowed** — the guard only protects formats with a registered parser. Currently that means PyPI wheels and `sdists`.
 
 For the detection logic internals, see [Detection Pipeline](detection.md).
 
@@ -59,9 +63,11 @@ curl -o /dev/null -w "%{http_code}" \
   https://pulp.example.com/pulp/content/local-pypi/urllib3-2.7.0-py3-none-any.whl
 ```
 
-## Enriched Blocking Messages
+## What the User Sees
 
-When `TRUSTIFY_ENRICH_DETAILS` is enabled (default), content app logs include CVE IDs and Trustify URLs:
+When both [Yank Warnings](yank.md) and the download guard are active, pip first shows a yank warning with CVE details, then hits the 403 on download. See [Yank Interaction with Download Guard](yank.md#interaction-with-download-guard) for the full two-phase flow.
+
+The enriched details appear in the content app logs (`kubectl logs deployment/pulp-content`):
 
 ```
 pulp_trustify.gate: Blocking 'pkg:pypi/urllib3@2.6.2': CVE-2026-21441
@@ -69,6 +75,6 @@ Details:
   https://trustify.example.com/vulnerabilities/CVE-2026-21441
 ```
 
-See [Settings Reference](settings.md) for `TRUSTIFY_SEVERITY_THRESHOLD`, `TRUSTIFY_FAIL_OPEN`, and `TRUSTIFY_ENRICH_DETAILS`.
+Enrichment is controlled by `TRUSTIFY_ENRICH_DETAILS` (default: `True`). See [Settings Reference](settings.md).
 
 See [Known Limitations — Download Guard](known-limitations.md#download-guard) for caveats.

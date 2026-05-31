@@ -2,6 +2,17 @@
 
 A Pulp dispatched task that proactively walks repository content, detects vulnerabilities, and applies configurable remediation actions.
 
+The scanner covers the **past**, it cleans up vulnerable content that was cached before the plugin was deployed, or whose CVE was disclosed after it was cached.
+
+### Key Differences from Guard/Gate
+
+| | Scanner | Guard / Gate |
+|:--|:--------|:-------------|
+| **Scope** | Entire repository | Single request |
+| **Timing** | On-demand / periodic | Real-time |
+| **Action** | Label, quarantine, remove, advisory | Block access (403 / 400) |
+| **Performance** | Batch API calls | Per-request API calls |
+
 ## When to Use
 
 - Clean up content cached **before** the plugin was deployed
@@ -126,7 +137,7 @@ Each advisory includes a `details` field with per-CVE enrichment:
 
 ### Trigger a Scan
 
-There is no `pulp` CLI subcommand for scanning — use `curl`:
+There is no `pulp` CLI subcommand for scanning, use `curl` instead:
 
 ```bash
 # No CLI subcommand for /trustify/scan/ — use curl

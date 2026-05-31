@@ -63,6 +63,24 @@ This mode is best-effort: version range parsing is heuristic, and some CVE phras
 
 `filter_vulnerabilities(details, threshold)` keeps entries whose severity is at or above the threshold. The threshold is configured via `TRUSTIFY_SEVERITY_THRESHOLD` (default: `"critical"`). See [Settings Reference](settings.md).
 
+## Verify Detection Mode
+
+Operators can determine which detection mode is active by checking the plugin logs. At `DEBUG` level, the logs show which path was taken:
+
+```
+# Analyze mode active (OSV data available):
+pulp_trustify.gate: Analyze returned 2 items for 'pkg:pypi/urllib3@2.6.2'
+
+# Search fallback mode active (no OSV data):
+pulp_trustify.gate: Analyze empty for 'pkg:pypi/urllib3@2.6.2', falling back to search
+```
+
+To enable the preferred analyze mode, ensure at least the PyPI OSV importer is configured in Trustify. See [Trustify Importer Requirements](#trustify-importer-requirements) below.
+
+## Timeouts and Retries
+
+All Trustify API calls use a **30-second timeout** with **no automatic retries**. OIDC token fetch uses a 10-second timeout. A single transient network failure will block or allow the operation depending on `fail_open`.
+
 ## Fail-Open Behavior
 
 When Trustify is unreachable:
@@ -70,7 +88,7 @@ When Trustify is unreachable:
 - `TRUSTIFY_FAIL_OPEN=True` — log a warning, allow the operation
 - `TRUSTIFY_FAIL_OPEN=False` (default) — raise `PermissionError`, block the operation
 
-This applies to both analyze and search fallback modes.
+This applies to both analyze and search fallback modes. Because there are no retries, a transient Trustify outage with `fail_open=False` will block all downloads and uploads until Trustify recovers.
 
 ## Trustify Importer Requirements
 

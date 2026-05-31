@@ -35,40 +35,45 @@ The middleware skips processing when any of these conditions is false:
 4. Response status is 200
 5. Content-Type is `text/html` or `application/vnd.pypi.simple`
 
-All checks are fail-safe: any exception during injection is caught and logged, returning the original response unmodified.
+All checks are fail-safe: any exception during injection is caught, logged at `ERROR` level, and the original response is returned unmodified. The middleware never blocks a Simple API response, it only adds metadata.
 
-## Output Formats
+## How Yanked Works
 
-### HTML
+[PEP 592](https://peps.python.org/pep-0592/) defines a mechanism for package indexes to mark specific releases as "yanked" — meaning the release exists but should be avoided. A yanked release includes a reason string that the package manager displays as a warning. The client still allows installation of yanked versions when the user pins an exact version (e.g., `urllib3==2.6.2`), but warns prominently before proceeding.
 
-```html
-<a href="..." data-yanked="Vulnerable package flagged by Trustify: https://trustify.example.com/vulnerabilities/CVE-2026-21441">
-  urllib3-2.6.2-py3-none-any.whl
-</a>
-```
+`pulp_trustify` uses this mechanism to surface vulnerability information directly in the package manager workflow. The scanner labels vulnerable packages, and the middleware translates those labels into PEP 592 `data-yanked` attributes with Trustify CVE URLs as the reason.
 
-### JSON
-
-```json
-{
-  "files": [
-    {
-      "filename": "urllib3-2.6.2-py3-none-any.whl",
-      "yanked": "Vulnerable package flagged by Trustify: https://trustify.example.com/vulnerabilities/CVE-2026-21441"
-    }
-  ]
-}
-```
-
-### pip Warning Output
+## PyPI (`pip`)
 
 ```
-WARNING: The candidate selected for download or install is a yanked version: 'urllib3'
-  candidate (version 2.6.2 at .../urllib3-2.6.2.whl)
-Reason for being yanked: Vulnerable package flagged by Trustify: https://trustify.example.com/vulnerabilities/CVE-2026-21441
+$ pip install \
+    --quiet \
+    --no-deps \
+    --index-url "https://pulp.example.com/pypi/local-pypi/simple/" \
+    urllib3==2.6.2
+WARNING: The candidate selected for download or install is a yanked version: 'urllib3' candidate (version 2.6.2 at https://pulp.example.com/pulp/content/local-pypi/urllib3-2.6.2-py3-none-any.whl#sha256=ec21cd... (from https://pulp.example.com/pypi/local-pypi/simple/urllib3/) (requires-python:>=3.9))
+Reason for being yanked: Vulnerable package flagged by Trustify:
+- https://trustify.example.com/vulnerabilities/CVE-2026-21441
+- https://trustify.example.com/vulnerabilities/CVE-2026-44432
+- https://trustify.example.com/vulnerabilities/CVE-2026-44431
 ```
 
 `TRUSTIFY_YANK_MAX_CVES` (default: 3) limits the number of CVE URLs in the reason string.
+
+## Pulp CLI
+
+Check whether yank metadata is present in the Simple API response:
+
+```bash
+# HTML format (default) — look for data-yanked attribute
+curl -sSk 'https://pulp.example.com/pypi/local-pypi/simple/urllib3/'
+
+# JSON format (PEP 691) — look for "yanked" field
+curl -sSk -H 'Accept: application/vnd.pypi.simple.v1+json' \
+  'https://pulp.example.com/pypi/local-pypi/simple/urllib3/'
+```
+
+The middleware handles both [PEP 592](https://peps.python.org/pep-0592/) HTML (`data-yanked` attribute) and [PEP 691](https://peps.python.org/pep-0691/) JSON (`"yanked"` field) response formats.
 
 ## API App vs Content App URL
 
@@ -110,16 +115,5 @@ sequenceDiagram
 ```
 
 The warning gives context **before** the hard block.
-
-### Verify
-
-```bash
-# Check HTML Simple API for data-yanked
-curl -sSk 'https://pulp.example.com/pypi/local-pypi/simple/urllib3/'
-
-# Check JSON Simple API
-curl -sSk -H 'Accept: application/vnd.pypi.simple.v1+json' \
-  'https://pulp.example.com/pypi/local-pypi/simple/urllib3/'
-```
 
 See [Known Limitations — Yank Warnings](known-limitations.md#yank-warnings) for caveats.

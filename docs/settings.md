@@ -69,3 +69,25 @@ The detection mode (analyze vs. search fallback) is auto-selected based on Trust
 kubectl set env deployment/pulp-content -n pulp PULP_TRUSTIFY_LOG_LEVEL=DEBUG
 kubectl logs -n pulp deployment/pulp-content | grep pulp_trustify
 ```
+
+Expected output at `DEBUG` level when a download is blocked:
+
+```
+pulp_trustify.guard: Guard checking path: .../urllib3-2.6.2-py3-none-any.whl
+pulp_trustify.guard: Resolved PURL: 'pkg:pypi/urllib3@2.6.2'
+pulp_trustify.client.client: POST .../analyze with 1 PURLs
+pulp_trustify.gate: PURL 'pkg:pypi/urllib3@2.6.2' has 1 CVEs at or above 'critical'
+pulp_trustify.gate: Blocking 'pkg:pypi/urllib3@2.6.2': CVE-2026-21441
+```
+
+Expected scanner progression in worker logs:
+
+```
+pulp_trustify...scanner: Scan task started for repository '<uuid>'
+pulp_trustify...scanner: Scanning content for vulnerabilities
+pulp_trustify.scanner: Processing batch 1/1 (3 PURLs)
+pulp_trustify...scanner: PURL 'pkg:pypi/urllib3@2.6.2' has 1 CVEs at or above 'critical':
+  CVE-2026-21441 (critical)
+    https://trustify.example.com/vulnerabilities/CVE-2026-21441
+pulp_trustify...scanner: Removing vulnerable content: removing 1 vulnerable items
+```

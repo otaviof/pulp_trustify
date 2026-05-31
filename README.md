@@ -6,12 +6,14 @@ Pulp plugin integrating [Trustify](https://github.com/guacsec/trustify) CVE inte
 
 ## Architecture Overview
 
-Four complementary protection layers, all powered by a shared detection core (`gate.py`):
+Four complementary protection layers cover the full artifact lifecycle. **Guard** and **Upload Gate** are reactive (per-request blocking). **Scanner** is proactive (repository-wide sweep). **Yank Warnings** are advisory (inline pip warnings). Together they provide complete coverage:
 
-1. **[Download Guard](docs/guard.md)** — Blocks vulnerable artifact downloads at the content app level (403)
-2. **[Upload Gate](docs/upload-gate.md)** — Rejects vulnerable uploads at ingestion time via Django signals (400)
-3. **[Scanner](docs/scanner.md)** — Batch-scans existing content with configurable actions: label, quarantine, remove, advisory
-4. **[Yank Warnings](docs/yank.md)** — Injects PEP 592 `data-yanked` into Simple API responses for vulnerable packages
+- **Past**: [Scanner](docs/scanner.md) cleans up vulnerable content cached before the plugin was deployed
+- **Present**: [Download Guard](docs/guard.md) blocks downloads of vulnerable packages right now
+- **Future**: [Upload Gate](docs/upload-gate.md) prevents new vulnerable packages from entering
+- **Awareness**: [Yank Warnings](docs/yank.md) surface CVE details in pip's output before the hard block
+
+All four layers share the same detection core (`gate.py`) and severity threshold.
 
 ```mermaid
 flowchart TD
@@ -31,18 +33,39 @@ flowchart TD
 
 ## Quick Start
 
+Configure the [`pulp` CLI](https://docs.pulpproject.org/pulp_cli/):
+
 ```bash
-# 1. Create a TrustifyGuard (no CLI subcommand — use curl)
+pulp config create \
+    --base-url https://pulp.example.com \
+    --api-root /pulp/ \
+    --username admin \
+    --password <password>
+```
+
+Verify the plugin is installed:
+
+```bash
+pulp status | python3 -c "import sys,json; \
+  [print(v['component'], v['version']) \
+  for v in json.load(sys.stdin)['versions'] \
+  if v['component']=='trustify']"
+```
+
+Create and attach a download guard:
+
+```bash
+# Create a TrustifyGuard (no CLI subcommand — use curl)
 curl -X POST https://pulp.example.com/api/v3/contentguards/trustify/guard/ \
   -u admin:<password> -H "Content-Type: application/json" \
   -d '{"name": "trustify-guard"}'
 
-# 2. Attach to a distribution
+# Attach to a distribution
 pulp python distribution update \
   --name local-pypi \
   --content-guard /api/v3/contentguards/trustify/guard/<guard-uuid>/
 
-# 3. Verify: download a vulnerable package (should return 403)
+# Verify: download a vulnerable package (should return 403)
 curl -o /dev/null -w "%{http_code}" \
   https://pulp.example.com/pulp/content/local-pypi/urllib3-2.6.2-py3-none-any.whl
 ```
@@ -81,4 +104,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, testin
 
 ## Deployment
 
-See [deploy/README.md](deploy/README.md) for environment variables, script flags, and Kubernetes deployment.
+The plugin ships as a container image extending `pulp/pulp-minimal`, published to `ghcr.io/otaviof/pulp_trustify`. CI pushes the `main` tag on every merge; releases tag the image with the plugin version. Point your Pulp deployment at the image and set `PULP_TRUSTIFY_*` environment variables on the api, content, and worker pods.
+
+See [deploy/README.md](deploy/README.md) for a deployment script example, environment variables, and Kubernetes setup.

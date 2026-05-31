@@ -19,7 +19,7 @@ For Trustify's own limitations on vulnerability correlation, see the [Trustify V
 
 ## Upload Gate
 
-- **Does not apply to `bulk_create()`.** Django's `pre_save` signal is not fired by `bulk_create()`. Packages imported via `pulp_python` sync tasks (which use `bulk_create()`) bypass the gate. The download guard still catches these at serve time.
+- **Does not apply to synced content.** Django's `pre_save` signal is not fired by `bulk_create()`. Packages synced from upstream remotes via `pulp_python` sync tasks use `bulk_create()` internally, so they bypass the upload gate entirely. The download guard still catches these at serve time — vulnerable synced content will be blocked on download, not on ingestion.
 - **30s timeout per Trustify query.** Each upload incurs a Trustify API call, adding latency to the upload response.
 - **Requires `pulp_python`.** The gate connects to `PythonPackageContent`'s `pre_save` signal. If `pulp_python` is not installed, the gate is gracefully disabled (logged at startup).
 - **Controlled by `TRUSTIFY_GATE_UPLOADS`.** Set to `False` to disable the upload gate while keeping the download guard active. See [Settings Reference](settings.md#upload-gate).

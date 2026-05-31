@@ -2,6 +2,8 @@
 
 A Django `pre_save` signal handler that blocks uploads of vulnerable packages before they are persisted. When a client uploads a Python package, the gate builds a PURL from the content metadata and checks it against Trustify.
 
+The upload gate covers the **future**, it prevents new vulnerable packages from entering the repository.
+
 ## How It Works
 
 ```mermaid

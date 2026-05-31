@@ -160,6 +160,16 @@ python tests/workflow.py seed
 
 The curated advisories cover `urllib3` CVEs for deterministic test results. The `requests` package is intentionally absent — tests rely on it being clean.
 
+E2E tests use direct advisory ingestion (not Trustify's periodic importer). Each `PYSEC-*.json` fixture is a self-contained [OSV](https://osv.dev/) advisory that provides the vulnerability data Trustify needs to correlate packages via the `/api/v2/vulnerability/analyze` endpoint. This means the E2E stack does not require any Trustify importer job to be configured — the advisory data is seeded directly.
+
+| Fixture | CVE | Package | Purpose |
+|:--------|:----|:--------|:--------|
+| `PYSEC-2026-001.json` | CVE-2026-21441 | `urllib3` | Primary vulnerable package for guard, scan, yank tests |
+| `PYSEC-2026-002.json` | CVE-2026-44432 | `urllib3` | Second CVE to test multi-CVE output formatting |
+| `PYSEC-2026-003.json` | CVE-2026-44431 | `urllib3` | Third CVE to test `TRUSTIFY_YANK_MAX_CVES` truncation |
+
+For information on configuring Trustify's periodic importers (OSV, CVE, CSAF) in production, see the [Trustify Getting Started](https://docs.guac.sh/trustify/getting-started) guide and [Detection Pipeline](../docs/detection.md#trustify-importer-requirements).
+
 ## Test Organization
 
 Tests are organized by feature using pytest markers registered in `pyproject.toml`: `e2e` (base marker), `status` (plugin registration), `scan` (scanner behavior), `guard` (download blocking), and `gate` (upload blocking). Phase 1 tests run with the default observe-only configuration and exercise status, scan, and guard features. Phase 2 tests run after restarting Pulp with gating enabled and verify upload rejection.
