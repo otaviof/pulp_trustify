@@ -1,6 +1,11 @@
-# `pulp_trustify`
+<p align="center">
+  <img src="docs/pulp_trustify.png" alt="pulp_trustify" width="256" /><br/>
+  <a href="https://github.com/otaviof/pulp_trustify/actions/workflows/ci.yml"><img src="https://github.com/otaviof/pulp_trustify/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
+  <a href="https://github.com/otaviof/pulp_trustify/actions/workflows/release.yml"><img src="https://github.com/otaviof/pulp_trustify/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
+  <a href="https://github.com/otaviof/pulp_trustify/actions/workflows/e2e.yml"><img src="https://github.com/otaviof/pulp_trustify/actions/workflows/e2e.yml/badge.svg" alt="E2E" /></a>
+</p>
 
-[![CI](https://github.com/otaviof/pulp_trustify/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/otaviof/pulp_trustify/actions/workflows/ci.yml) [![Release](https://github.com/otaviof/pulp_trustify/actions/workflows/release.yml/badge.svg)](https://github.com/otaviof/pulp_trustify/actions/workflows/release.yml) [![E2E](https://github.com/otaviof/pulp_trustify/actions/workflows/e2e.yml/badge.svg)](https://github.com/otaviof/pulp_trustify/actions/workflows/e2e.yml)
+# `pulp_trustify`
 
 Pulp plugin integrating [Trustify](https://github.com/guacsec/trustify) CVE intelligence for vulnerability-gated artifact serving. [Trustify](https://docs.guac.sh/trustify/) is a [GUAC](https://guac.sh/) project that ingests SBOMs and security advisories to identify vulnerable software components.
 
@@ -8,7 +13,7 @@ Pulp plugin integrating [Trustify](https://github.com/guacsec/trustify) CVE inte
 
 Four complementary protection layers cover the full artifact lifecycle. **Guard** and **Upload Gate** are reactive (per-request blocking). **Scanner** is proactive (repository-wide sweep). **Yank Warnings** are advisory (inline pip warnings). Together they provide complete coverage:
 
-- **Past**: [Scanner](docs/scanner.md) cleans up vulnerable content cached before the plugin was deployed
+- **Past**: [Scanner](docs/scanner.md) finds packages already in the repository that have had CVEs disclosed since they were uploaded
 - **Present**: [Download Guard](docs/guard.md) blocks downloads of vulnerable packages right now
 - **Future**: [Upload Gate](docs/upload-gate.md) prevents new vulnerable packages from entering
 - **Awareness**: [Yank Warnings](docs/yank.md) surface CVE details in pip's output before the hard block

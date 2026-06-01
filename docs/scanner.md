@@ -2,7 +2,7 @@
 
 A Pulp dispatched task that proactively walks repository content, detects vulnerabilities, and applies configurable remediation actions.
 
-The scanner covers the **past**, it cleans up vulnerable content that was cached before the plugin was deployed, or whose CVE was disclosed after it was cached.
+The scanner covers the **past** — it detects packages already in the repository that have had CVEs disclosed since they were uploaded.
 
 ### Key Differences from Guard/Gate
 
@@ -15,8 +15,8 @@ The scanner covers the **past**, it cleans up vulnerable content that was cached
 
 ## When to Use
 
-- Clean up content cached **before** the plugin was deployed
-- Remove packages whose CVE was disclosed **after** they were cached
+- Detect packages that have had CVEs disclosed since they were uploaded
+- Remove or quarantine newly vulnerable content from existing repositories
 - Periodic repository hygiene (automated via cron or operator schedules)
 
 ## How It Works
