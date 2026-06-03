@@ -43,7 +43,7 @@ Set `TRUSTIFY_SCAN_ON_CONTENT_CHANGE=True` to trigger a scan automatically when 
 PULP_TRUSTIFY_SCAN_ON_CONTENT_CHANGE=True
 ```
 
-Event-driven scanning fills the `bulk_create()` gap — synced content bypasses the upload gate (`pre_save` signal), but the `post_save` signal on `RepositoryVersion` fires after every sync finalization. The scanner then examines all content in the new version.
+Event-driven scanning provides defense-in-depth. The upload gate checks each package at sync time via `pre_save`, but it can only detect CVEs known at that moment. The event-driven scanner re-examines all content in the new repository version, catching packages whose CVEs were disclosed between upload and the latest advisory import. This also guards against the possibility that a future pulpcore version or custom sync stage bypasses `.save()` for Content objects (see [Known Limitations](known-limitations.md#upload-gate)).
 
 **Self-trigger prevention:** The scanner creates new repository versions when removing content. The signal handler checks the current task name via `_current_task` ContextVar and skips versions created by `scan_repository` to prevent infinite loops.
 
@@ -54,7 +54,7 @@ Event-driven scanning fills the `bulk_create()` gap — synced content bypasses 
 | Trigger | Purpose | Catches | Setting |
 |:--------|:--------|:--------|:--------|
 | Periodic | Re-scan for newly disclosed CVEs | CVEs published after last scan | `TRUSTIFY_SCAN_SCHEDULE` |
-| Event-driven | Scan newly added content | Synced/uploaded packages | `TRUSTIFY_SCAN_ON_CONTENT_CHANGE` |
+| Event-driven | Defense-in-depth + retroactive CVE catch | CVEs disclosed after sync/upload | `TRUSTIFY_SCAN_ON_CONTENT_CHANGE` |
 
 Periodic and event-driven can be enabled together, they serve different purposes.
 
