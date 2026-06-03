@@ -30,6 +30,9 @@ For Trustify's own limitations on vulnerability correlation, see the [Trustify V
 - **Exclusive repository lock.** `scan_repository` acquires an exclusive lock on the repository, blocking concurrent syncs and scans for the duration.
 - **Immutable version history.** Content removal creates a new repository version. Previous versions (containing vulnerable content) remain in Pulp's version history. There is no "undo" — content must be re-added explicitly.
 - **Orphaned quarantine repos.** Quarantine repositories created before the typed-quarantine feature (which creates `prefix-type_suffix` repos like `quarantine-python`) are orphaned and must be cleaned up manually.
+- **Window of exposure.** Between a repository version being finalized and the scan task executing, newly synced vulnerable content is available for download. Attach a `TrustifyGuard` to the distribution for zero-window protection. See [Automation](scanner.md#automation).
+- **Event-driven full re-scan.** Event-driven scans re-scan the entire repository, not just newly added content. This is by design (catches retroactive CVEs) but adds load proportional to repository size.
+- **`_current_task` is a private API.** The self-trigger prevention for event-driven scanning uses `pulpcore.app.contexts._current_task`, a private ContextVar. No public accessor exists in pulpcore 3.112.
 
 ## Yank Warnings
 

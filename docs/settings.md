@@ -37,6 +37,8 @@ The detection mode (analyze vs. search fallback) is auto-selected based on Trust
 | `TRUSTIFY_SCAN_QUARANTINE_REPO` | `""` | Quarantine repo name prefix (e.g., `"quarantine"` creates `"quarantine-python"`). Empty disables quarantine. See [Scanner Actions](scanner.md#scanner-actions). |
 | `TRUSTIFY_SCAN_LABEL_CONTENT` | `True` | Tag vulnerable content with `trustify.*` labels in `pulp_labels` |
 | `TRUSTIFY_SCAN_ADVISORY` | `True` | Record a `ScanAdvisory` per finding |
+| `TRUSTIFY_SCAN_SCHEDULE` | `""` | Periodic scan interval (e.g., `"6h"`, `"1d"`, `"30m"`). Empty disables periodic scanning. See [Automation](scanner.md#automation). |
+| `TRUSTIFY_SCAN_ON_CONTENT_CHANGE` | `False` | Dispatch scan when a new repository version is created (sync, upload, or any content change). See [Automation](scanner.md#automation). |
 | `TRUSTIFY_BATCH_SIZE` | `100` | Number of PURLs per batch `/analyze` call (scanner only) |
 
 ## Yank Warnings

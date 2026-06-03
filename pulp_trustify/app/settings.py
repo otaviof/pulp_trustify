@@ -65,6 +65,18 @@ TRUSTIFY_SCAN_LABEL_CONTENT
     ``pulp_labels``.
 TRUSTIFY_SCAN_ADVISORY
     Record a ``ScanAdvisory`` per finding.
+TRUSTIFY_SCAN_SCHEDULE
+    Periodic scan interval as a duration string (e.g.
+    ``"6h"``, ``"1d"``, ``"30m"``).  Empty disables
+    periodic scanning.  Uses Pulpcore's ``TaskSchedule``
+    to dispatch ``scan_all_repositories`` on the
+    configured interval.
+TRUSTIFY_SCAN_ON_CONTENT_CHANGE
+    When ``True``, trigger a scan automatically when a
+    new repository version is created (after sync,
+    upload, or any content change).  Default ``False`` —
+    event-driven scanning is opt-in because it may
+    generate scan tasks on every sync operation.
 TRUSTIFY_BATCH_SIZE
     Number of PURLs sent per ``/analyze`` API call during
     scanning.
@@ -101,6 +113,8 @@ TRUSTIFY_SCAN_REMOVE_CONTENT = True
 TRUSTIFY_SCAN_QUARANTINE_REPO = ""
 TRUSTIFY_SCAN_LABEL_CONTENT = True
 TRUSTIFY_SCAN_ADVISORY = True
+TRUSTIFY_SCAN_SCHEDULE = ""
+TRUSTIFY_SCAN_ON_CONTENT_CHANGE = False
 TRUSTIFY_BATCH_SIZE = 100
 TRUSTIFY_LOG_LEVEL = "INFO"
 TRUSTIFY_ENRICH_DETAILS = True

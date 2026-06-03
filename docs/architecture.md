@@ -24,7 +24,7 @@ flowchart TD
 |:------|:-------|:-------|:------|
 | [Download Guard](guard.md) | Per-request | Blocks download (403) | Single artifact |
 | [Upload Gate](upload-gate.md) | Per-upload | Rejects upload (400) | Single package |
-| [Scanner](scanner.md) | On-demand/periodic | Label, quarantine, remove, advisory | Entire repository |
+| [Scanner](scanner.md) | On-demand / periodic / event-driven | Label, quarantine, remove, advisory | Entire repository |
 | [Yank Warnings](yank.md) | Per-index-request | Injects PEP 592 `data-yanked` | Simple API response |
 
 ## PURL Extraction

@@ -17,11 +17,50 @@ The scanner covers the **past** — it detects packages already in the repositor
 
 - Detect packages that have had CVEs disclosed since they were uploaded
 - Remove or quarantine newly vulnerable content from existing repositories
-- Periodic repository hygiene (automated via cron or operator schedules)
+- Periodic repository hygiene via `TRUSTIFY_SCAN_SCHEDULE`
+- Automatic scanning after sync or upload via `TRUSTIFY_SCAN_ON_CONTENT_CHANGE`
+
+## Automation
+
+The scanner supports two built-in automation modes that complement manual triggering.
+
+### Periodic Scanning
+
+Set `TRUSTIFY_SCAN_SCHEDULE` to a duration string (e.g., `"6h"`, `"1d"`, `"30m"`) to enable periodic scanning. The plugin registers a Pulpcore `TaskSchedule` that dispatches `scan_all_repositories` on the configured interval. Each dispatch iterates all repositories and dispatches individual `scan_repository` tasks.
+
+```bash
+# Enable 6-hour periodic scans
+PULP_TRUSTIFY_SCAN_SCHEDULE=6h
+```
+
+Setting the value to empty (`""`) disables the schedule and removes any existing `TaskSchedule`.
+
+### Event-Driven Scanning
+
+Set `TRUSTIFY_SCAN_ON_CONTENT_CHANGE=True` to trigger a scan automatically when a new repository version is created. This fires after sync, upload, or any operation that creates a repository version.
+
+```bash
+PULP_TRUSTIFY_SCAN_ON_CONTENT_CHANGE=True
+```
+
+Event-driven scanning fills the `bulk_create()` gap — synced content bypasses the upload gate (`pre_save` signal), but the `post_save` signal on `RepositoryVersion` fires after every sync finalization. The scanner then examines all content in the new version.
+
+**Self-trigger prevention:** The scanner creates new repository versions when removing content. The signal handler checks the current task name via `_current_task` ContextVar and skips versions created by `scan_repository` to prevent infinite loops.
+
+**Debounce:** The `scan_repository` task acquires an exclusive lock on the repository. If a scan is already queued or running, the new dispatch waits in line.
+
+### Choosing an Approach
+
+| Trigger | Purpose | Catches | Setting |
+|:--------|:--------|:--------|:--------|
+| Periodic | Re-scan for newly disclosed CVEs | CVEs published after last scan | `TRUSTIFY_SCAN_SCHEDULE` |
+| Event-driven | Scan newly added content | Synced/uploaded packages | `TRUSTIFY_SCAN_ON_CONTENT_CHANGE` |
+
+Periodic and event-driven can be enabled together, they serve different purposes.
 
 ## How It Works
 
-1. Operator triggers scan via REST API
+1. Scan is triggered manually via REST API, automatically via schedule, or by content change signal
 2. Task enumerates all content in the repository's latest version
 3. Builds PURLs from content metadata (name/version fields)
 4. Queries Trustify in batches (`TRUSTIFY_BATCH_SIZE`, default: 100)
