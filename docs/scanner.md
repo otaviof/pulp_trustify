@@ -45,6 +45,8 @@ PULP_TRUSTIFY_SCAN_ON_CONTENT_CHANGE=True
 
 Event-driven scanning provides defense-in-depth. The upload gate checks each package at sync time via `pre_save`, but it can only detect CVEs known at that moment. The event-driven scanner re-examines all content in the new repository version, catching packages whose CVEs were disclosed between upload and the latest advisory import. This also guards against the possibility that a future pulpcore version or custom sync stage bypasses `.save()` for Content objects (see [Known Limitations](known-limitations.md#upload-gate)).
 
+> **Operational difference:** Event-driven scanning provides selective remediation (remove, label, or quarantine individual packages) vs. the gate's all-or-nothing sync failure. It queries the same Trustify data as the gate, so it doesn't catch additional CVEs — it provides a different remediation mode.
+
 **Self-trigger prevention:** The scanner creates new repository versions when removing content. The signal handler checks the current task name via `_current_task` ContextVar and skips versions created by `scan_repository` to prevent infinite loops.
 
 **Debounce:** The `scan_repository` task acquires an exclusive lock on the repository. If a scan is already queued or running, the new dispatch waits in line.
@@ -54,9 +56,11 @@ Event-driven scanning provides defense-in-depth. The upload gate checks each pac
 | Trigger | Purpose | Catches | Setting |
 |:--------|:--------|:--------|:--------|
 | Periodic | Re-scan for newly disclosed CVEs | CVEs published after last scan | `TRUSTIFY_SCAN_SCHEDULE` |
-| Event-driven | Defense-in-depth + retroactive CVE catch | CVEs disclosed after sync/upload | `TRUSTIFY_SCAN_ON_CONTENT_CHANGE` |
+| Event-driven | Defense-in-depth after content changes | Known CVEs at time of content change | `TRUSTIFY_SCAN_ON_CONTENT_CHANGE` |
 
 Periodic and event-driven can be enabled together, they serve different purposes.
+
+> The download guard provides real-time blocking at download time independent of scanning. Periodic scanning is the correct tool for retroactive CVEs (fires on schedule regardless of content changes).
 
 ## How It Works
 

@@ -4,6 +4,8 @@ A Django `pre_save` signal handler that blocks uploads of vulnerable packages be
 
 The upload gate covers the **future**, it prevents new vulnerable packages from entering the repository.
 
+> The gate blocks the entire sync when any package is vulnerable. This is strict by design — syncs fail entirely if any single package is vulnerable. Enable event-driven scanning (`TRUSTIFY_SCAN_ON_CONTENT_CHANGE=True`) as an alternative for selective post-sync remediation when sync availability is a priority.
+
 ## How It Works
 
 ```mermaid

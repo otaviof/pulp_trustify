@@ -4,6 +4,8 @@ A `ContentGuard` that blocks downloads of vulnerable packages at the Pulp Conten
 
 The guard covers the **present** — it blocks vulnerable packages right now, as clients request them.
 
+> The guard queries Trustify live at download time with the freshest advisory data. CVEs disclosed days or weeks after sync are caught without requiring a scan.
+
 ## How It Works
 
 ```mermaid

@@ -25,7 +25,7 @@ flowchart TD
     subgraph "Protection Layers"
         A["Download Guard<br/>(real-time blocking)"]
         B["Upload Gate<br/>(upload-time blocking)"]
-        C["Scanner<br/>(periodic sweep)"]
+        C["Scanner<br/>(periodic & event-driven)"]
         D2["Yank Warnings<br/>(PEP 592 Simple API)"]
     end
 

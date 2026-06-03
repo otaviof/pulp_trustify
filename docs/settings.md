@@ -48,6 +48,34 @@ The detection mode (analyze vs. search fallback) is auto-selected based on Trust
 | `TRUSTIFY_YANK_VULNERABLE` | `True` | Inject PEP 592 `data-yanked` into Simple API responses. See [Yank Warnings](yank.md). |
 | `TRUSTIFY_YANK_MAX_CVES` | `3` | Maximum number of CVE URLs in the yanked reason string |
 
+## Recommended Configuration
+
+Two operational profiles balance strictness vs. availability:
+
+### Strict (default)
+
+Gate enabled + guard attached + periodic scanning. Syncs fail on vulnerable content, guard covers retroactive CVEs.
+
+```bash
+PULP_TRUSTIFY_GATE_UPLOADS=True
+PULP_TRUSTIFY_SCAN_SCHEDULE=6h
+PULP_TRUSTIFY_SCAN_ON_CONTENT_CHANGE=False
+```
+
+Attach a `TrustifyGuard` to distributions. Syncs fail entirely if any package is vulnerable — no vulnerable content enters. The guard blocks downloads of content that becomes vulnerable after sync (CVEs disclosed between scheduled scans).
+
+### Permissive
+
+Gate disabled + event-driven scanner + guard attached. Syncs always succeed, scanner remediates post-sync, guard covers the interim.
+
+```bash
+PULP_TRUSTIFY_GATE_UPLOADS=False
+PULP_TRUSTIFY_SCAN_ON_CONTENT_CHANGE=True
+PULP_TRUSTIFY_SCAN_SCHEDULE=""
+```
+
+Attach a `TrustifyGuard` to distributions. Syncs always succeed — vulnerable content enters the repository and is selectively removed post-sync. The guard blocks downloads during the async remediation window.
+
 ## Observability
 
 | Setting | Default | Description |
