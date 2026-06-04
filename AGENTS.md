@@ -62,4 +62,5 @@ See [deploy/README.md](deploy/README.md).
 - **Tests**: co-located `*_test.py` files.
 - **Line length**: 82 (Python code only, not markdown).
 - **Comments**: only when the *why* is non-obvious.
+- **Versioning**: bump the version in `pyproject.toml` on every project change, following [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`). Drop the `.dev` suffix on first real release.
 - **Task runner**: `poe`, not raw tool commands. Run `poe check` before submitting.
