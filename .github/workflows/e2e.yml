@@ -2,30 +2,26 @@
 name: E2E
 
 on:
-  workflow_dispatch:
-    inputs:
-      pulp-url:
-        description: Pulp base URL
-        required: true
-      pulp-api-root:
-        description: API root prefix
-        required: false
-        default: /pulp/
-      runner:
-        description: Runner label
-        required: false
-        default: self-hosted
+  push:
+    branches:
+    - main
+    paths-ignore:
+    - '**.md'
+  pull_request:
+    branches:
+    - main
+    paths-ignore:
+    - '**.md'
+
+permissions:
+  contents: read
 
 jobs:
   e2e:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE: "docker compose"
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-env
-      - env:
-          PULP_URL: ${{ inputs.pulp-url }}
-          PULP_API_ROOT: ${{ inputs.pulp-api-root }}
-          PULP_PASSWORD: ${{ secrets.PULP_PASSWORD }}
-          PULP_VERIFY_SSL: "false"
-          TRUSTIFY_URL: ""
-        run: poe test-e2e-direct
+      - run: poe e2e
