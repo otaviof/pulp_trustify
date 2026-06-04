@@ -40,4 +40,5 @@ For Trustify's own limitations on vulnerability correlation, see the [Trustify V
 
 - **Repo-only distributions.** Yank warnings only apply to distributions that serve content directly from a repository (not publication-based distributions).
 - **API app URL required.** The `YankMiddleware` runs in Django's request/response cycle (API App). Pip must use the API app URL (`/pypi/<dist>/simple/`), not the content app URL (`/pulp/content/<dist>/simple/`).
-- **Scanner labels required.** Yank warnings read `trustify.vulnerable` and `trustify.cves` labels from `pulp_labels`. These labels are set by the scanner's label action. Packages that have not been scanned (or were scanned with `TRUSTIFY_SCAN_LABEL_CONTENT=False`) will not show yank warnings.
+- **Live query with label fallback.** Yank warnings query Trustify live at index request time. If Trustify is unreachable, falls back to scanner labels. If neither is available, yank attributes are silently omitted.
+- **Per-index-request latency.** Each Simple API index request triggers a Trustify `/analyze` call with all package versions. For packages with many versions, this adds latency proportional to the number of versions.

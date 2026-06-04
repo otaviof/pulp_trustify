@@ -32,8 +32,7 @@ flowchart TD
     A --> I["Shared Detection Core<br/>gate.py → check_purl()"]
     B --> I
     C --> I
-    D2 -.reads.-> J["Scanner Labels<br/>(pulp_labels)"]
-    C -.writes.-> J
+    D2 --> I
 ```
 
 ## Quick Start

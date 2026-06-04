@@ -93,6 +93,76 @@ def check_purl(
     return []
 
 
+def check_purls(
+    client: VulnerabilityChecker,
+    purls: list[str],
+    threshold: str,
+    fail_open: bool,
+) -> dict[str, list[str]]:
+    """Check multiple PURLs against Trustify. Returns dict mapping
+    vulnerable PURL -> CVE IDs.
+
+    Tries batch analyze first, falls back to per-PURL check_purl()
+    for PURLs not returned by analyze (search-based detection).
+    """
+    logger.debug(
+        "Checking %d PURLs against threshold='%s'",
+        len(purls),
+        threshold,
+    )
+    try:
+        response = client.analyze(purls)
+    except TrustifyError as exc:
+        if fail_open:
+            logger.warning(
+                "Trustify batch analysis failed (fail_open=True): %s",
+                exc,
+            )
+            return {}
+        raise
+
+    result: dict[str, list[str]] = {}
+    analyzed_purls: set[str] = set()
+
+    for item in response.get("items", []):
+        purl = item.get("purl")
+        if not purl:
+            continue
+
+        details = item.get("details", [])
+        if details:
+            analyzed_purls.add(purl)
+            matching = filter_vulnerabilities(details, threshold)
+            if matching:
+                cve_ids = [
+                    entry.get("entry", {}).get("cve", "unknown")
+                    for entry in matching
+                ]
+                result[purl] = cve_ids
+                logger.info(
+                    "PURL '%s' has %d CVEs at or above '%s': %s",
+                    purl,
+                    len(cve_ids),
+                    threshold,
+                    ", ".join(cve_ids),
+                )
+
+    logger.debug(
+        "Batch analyze: %d analyzed, %d vulnerable, %d fallback",
+        len(analyzed_purls),
+        len(result),
+        len(purls) - len(analyzed_purls),
+    )
+
+    for purl in purls:
+        if purl not in analyzed_purls:
+            cve_ids = check_purl(client, purl, threshold, fail_open)
+            if cve_ids:
+                result[purl] = cve_ids
+
+    return result
+
+
 def gate_purl(
     client: VulnerabilityChecker,
     purl: str,

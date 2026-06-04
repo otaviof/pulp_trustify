@@ -6,20 +6,20 @@ Yank warnings are advisory — for enforcement, use the [Download Guard](guard.m
 
 ## How It Works
 
-When a client queries the Simple API index (e.g., `GET /pypi/local-pypi/simple/urllib3/`), `YankMiddleware` intercepts the response and injects PEP 592 metadata for packages whose `pulp_labels` contain `trustify.vulnerable=true`.
+When a client queries the Simple API index (e.g., `GET /pypi/local-pypi/simple/urllib3/`), `YankMiddleware` intercepts the response and injects PEP 592 metadata for packages found vulnerable by querying Trustify live, with scanner labels as fallback.
 
 ```mermaid
 sequenceDiagram
     participant C as pip Client
     participant D as Django (API App)
     participant Y as YankMiddleware
-    participant DB as PythonPackageContent
+    participant T as Trustify API
 
     C->>D: GET /pypi/local-pypi/simple/urllib3/
     D->>Y: get_response(request)
     D-->>Y: HTTP 200 (text/html)
-    Y->>DB: query pulp_labels for filenames
-    DB-->>Y: trustify.vulnerable=true, trustify.cves=CVE-2026-21441
+    Y->>T: POST /analyze (batch PURLs)
+    T-->>Y: vulnerability results
     Y->>Y: Inject data-yanked attribute
     Y-->>C: Modified response with data-yanked
     C->>C: pip WARNING: yanked version
@@ -31,9 +31,10 @@ The middleware skips processing when any of these conditions is false:
 
 1. `pulp_python` is installed (`_available`)
 2. `TRUSTIFY_YANK_VULNERABLE` is enabled
-3. Request path contains `/simple/`
-4. Response status is 200
-5. Content-Type is `text/html` or `application/vnd.pypi.simple`
+3. `TRUSTIFY_URL` is configured (falls back to scanner labels if empty)
+4. Request path contains `/simple/`
+5. Response status is 200
+6. Content-Type is `text/html` or `application/vnd.pypi.simple`
 
 All checks are fail-safe: any exception during injection is caught, logged at `ERROR` level, and the original response is returned unmodified. The middleware never blocks a Simple API response, it only adds metadata.
 
@@ -102,7 +103,7 @@ sequenceDiagram
     Note over C,G: Phase 1: Index Resolution (API App)
     C->>A: GET /pypi/local-pypi/simple/urllib3/
     A->>Y: Response with package listing
-    Y->>Y: Inject data-yanked (reads pulp_labels)
+    Y->>Y: Inject data-yanked (live query)
     A-->>C: HTML with data-yanked on urllib3-2.6.2.whl
     C->>C: WARNING: yanked version
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -13,6 +14,7 @@ from pulp_trustify.yank import (
     _href_to_filename,
     _inject_yanked_html,
     _inject_yanked_json,
+    _live_lookup,
 )
 
 TRUSTIFY_URL = "https://trustify.example.com"
@@ -24,6 +26,8 @@ def _make_settings(**overrides):
     defaults = {
         "TRUSTIFY_YANK_VULNERABLE": True,
         "TRUSTIFY_URL": TRUSTIFY_URL,
+        "TRUSTIFY_SEVERITY_THRESHOLD": "high",
+        "TRUSTIFY_YANK_MAX_CVES": 10,
     }
     defaults.update(overrides)
     return SimpleNamespace(**defaults)
@@ -85,70 +89,34 @@ _P = "Vulnerable package flagged by Trustify"
 
 
 @pytest.mark.parametrize(
-    "labels,expected",
+    "cve_ids,expected",
     [
-        (
-            {
-                "trustify.vulnerable": "true",
-                "trustify.cves": f"{CVE_1} {CVE_2}",
-            },
-            f"{_P}:\n- {URL_1}\n- {URL_2}",
-        ),
-        (
-            {
-                "trustify.vulnerable": "true",
-                "trustify.cves": CVE_1,
-            },
-            f"{_P}: {URL_1}",
-        ),
-        (
-            {
-                "trustify.vulnerable": "true",
-                "trustify.cves": "",
-            },
-            None,
-        ),
-        ({"trustify.vulnerable": "true"}, None),
-        (
-            {
-                "trustify.vulnerable": "false",
-                "trustify.cves": CVE_1,
-            },
-            None,
-        ),
-        ({}, None),
-        ({"trustify.cves": CVE_1}, None),
+        ([CVE_1, CVE_2], f"{_P}:\n- {URL_1}\n- {URL_2}"),
+        ([CVE_1], f"{_P}: {URL_1}"),
+        ([], None),
     ],
 )
-def test_build_yanked_reason(labels: dict[str, str], expected: str | None):
-    result = _build_yanked_reason(labels, TRUSTIFY_URL)
+def test_build_yanked_reason(cve_ids: list[str], expected: str | None):
+    result = _build_yanked_reason(cve_ids, TRUSTIFY_URL)
     assert result == expected
 
 
 def test_build_yanked_reason_with_trailing_slash():
-    labels = {
-        "trustify.vulnerable": "true",
-        "trustify.cves": CVE_1,
-    }
-    result = _build_yanked_reason(labels, f"{TRUSTIFY_URL}/")
+    result = _build_yanked_reason([CVE_1], f"{TRUSTIFY_URL}/")
     assert result == f"{_P}: {URL_1}"
 
 
 def test_build_yanked_reason_max_cves_limits_output():
-    labels = {
-        "trustify.vulnerable": "true",
-        "trustify.cves": (f"{CVE_1} {CVE_2} CVE-2026-99999"),
-    }
-    result = _build_yanked_reason(labels, TRUSTIFY_URL, max_cves=2)
+    result = _build_yanked_reason(
+        [CVE_1, CVE_2, "CVE-2026-99999"],
+        TRUSTIFY_URL,
+        max_cves=2,
+    )
     assert result == (f"{_P} (2 of 3 CVEs):\n- {URL_1}\n- {URL_2}")
 
 
 def test_build_yanked_reason_max_cves_single():
-    labels = {
-        "trustify.vulnerable": "true",
-        "trustify.cves": f"{CVE_1} {CVE_2}",
-    }
-    result = _build_yanked_reason(labels, TRUSTIFY_URL, max_cves=1)
+    result = _build_yanked_reason([CVE_1, CVE_2], TRUSTIFY_URL, max_cves=1)
     assert result == f"{_P} (1 of 2 CVEs): {URL_1}"
 
 
@@ -171,7 +139,8 @@ def test_href_to_filename(href: str, expected: str):
     assert _href_to_filename(href) == expected
 
 
-@patch("pulp_trustify.yank._label_lookup")
+@patch("pulp_trustify.yank.settings", _make_settings())
+@patch("pulp_trustify.yank._live_lookup")
 def test_inject_yanked_html_full_urls(
     mock_lookup: Mock,
 ):
@@ -195,7 +164,8 @@ def test_inject_yanked_html_full_urls(
     assert f'data-yanked="{reason}"' in decoded
 
 
-@patch("pulp_trustify.yank._label_lookup")
+@patch("pulp_trustify.yank.settings", _make_settings())
+@patch("pulp_trustify.yank._live_lookup")
 def test_inject_yanked_html_adds_data_yanked(
     mock_lookup: Mock, html_sample: bytes
 ):
@@ -216,7 +186,8 @@ def test_inject_yanked_html_adds_data_yanked(
     assert "data-yanked" not in six_line
 
 
-@patch("pulp_trustify.yank._label_lookup")
+@patch("pulp_trustify.yank.settings", _make_settings())
+@patch("pulp_trustify.yank._live_lookup")
 def test_inject_yanked_html_escapes_quotes_in_reason(
     mock_lookup: Mock, html_sample: bytes
 ):
@@ -230,15 +201,15 @@ def test_inject_yanked_html_escapes_quotes_in_reason(
     assert 'data-yanked="CVE-123 &quot;test&quot;"' in html
 
 
-@patch("pulp_trustify.yank._label_lookup")
-def test_inject_yanked_html_no_anchors(mock_lookup: Mock):
+@patch("pulp_trustify.yank.settings", _make_settings())
+def test_inject_yanked_html_no_anchors():
     html = b"<html><body>No anchors here</body></html>"
     result = _inject_yanked_html(html, "/simple/urllib3/")
     assert result == html
-    mock_lookup.assert_not_called()
 
 
-@patch("pulp_trustify.yank._label_lookup")
+@patch("pulp_trustify.yank.settings", _make_settings())
+@patch("pulp_trustify.yank._live_lookup")
 def test_inject_yanked_html_no_vulnerable_files(
     mock_lookup: Mock, html_sample: bytes
 ):
@@ -249,7 +220,8 @@ def test_inject_yanked_html_no_vulnerable_files(
     assert result == html_sample
 
 
-@patch("pulp_trustify.yank._label_lookup")
+@patch("pulp_trustify.yank.settings", _make_settings())
+@patch("pulp_trustify.yank._live_lookup")
 def test_inject_yanked_html_mixed_vulnerable_and_clean(
     mock_lookup: Mock, html_sample: bytes
 ):
@@ -268,7 +240,8 @@ def test_inject_yanked_html_mixed_vulnerable_and_clean(
     assert "data-yanked" not in six_line
 
 
-@patch("pulp_trustify.yank._label_lookup")
+@patch("pulp_trustify.yank.settings", _make_settings())
+@patch("pulp_trustify.yank._live_lookup")
 def test_inject_yanked_html_skips_already_yanked(mock_lookup: Mock):
     html = b'<a href="file.whl" data-yanked="already yanked">link</a>'
     mock_lookup.return_value = {"file.whl": "new reason"}
@@ -278,7 +251,8 @@ def test_inject_yanked_html_skips_already_yanked(mock_lookup: Mock):
     assert result == html
 
 
-@patch("pulp_trustify.yank._label_lookup")
+@patch("pulp_trustify.yank.settings", _make_settings())
+@patch("pulp_trustify.yank._live_lookup")
 def test_inject_yanked_json_adds_yanked_field(
     mock_lookup: Mock, json_sample: bytes
 ):
@@ -294,29 +268,28 @@ def test_inject_yanked_json_adds_yanked_field(
     assert "yanked" not in data["files"][1]
 
 
-@patch("pulp_trustify.yank._label_lookup")
-def test_inject_yanked_json_empty_files_array(mock_lookup: Mock):
+@patch("pulp_trustify.yank.settings", _make_settings())
+def test_inject_yanked_json_empty_files_array():
     content = json.dumps({"meta": {"api-version": "1.0"}, "files": []})
     content_bytes = content.encode("utf-8")
 
     result = _inject_yanked_json(content_bytes, "/simple/urllib3/")
 
     assert result == content_bytes
-    mock_lookup.assert_not_called()
 
 
-@patch("pulp_trustify.yank._label_lookup")
-def test_inject_yanked_json_no_files_key(mock_lookup: Mock):
+@patch("pulp_trustify.yank.settings", _make_settings())
+def test_inject_yanked_json_no_files_key():
     content = json.dumps({"meta": {"api-version": "1.0"}})
     content_bytes = content.encode("utf-8")
 
     result = _inject_yanked_json(content_bytes, "/simple/urllib3/")
 
     assert result == content_bytes
-    mock_lookup.assert_not_called()
 
 
-@patch("pulp_trustify.yank._label_lookup")
+@patch("pulp_trustify.yank.settings", _make_settings())
+@patch("pulp_trustify.yank._live_lookup")
 def test_inject_yanked_json_no_vulnerable_files(
     mock_lookup: Mock, json_sample: bytes
 ):
@@ -327,7 +300,8 @@ def test_inject_yanked_json_no_vulnerable_files(
     assert result == json_sample
 
 
-@patch("pulp_trustify.yank._label_lookup")
+@patch("pulp_trustify.yank.settings", _make_settings())
+@patch("pulp_trustify.yank._live_lookup")
 def test_inject_yanked_json_mixed_vulnerable_and_clean(
     mock_lookup: Mock, json_sample: bytes
 ):
@@ -344,8 +318,8 @@ def test_inject_yanked_json_mixed_vulnerable_and_clean(
     assert "yanked" not in data["files"][1]
 
 
-@patch("pulp_trustify.yank._label_lookup")
-def test_inject_yanked_json_files_without_filename(mock_lookup: Mock):
+@patch("pulp_trustify.yank.settings", _make_settings())
+def test_inject_yanked_json_files_without_filename():
     content = json.dumps(
         {
             "meta": {"api-version": "1.0"},
@@ -356,7 +330,6 @@ def test_inject_yanked_json_files_without_filename(mock_lookup: Mock):
     result = _inject_yanked_json(content, "/simple/urllib3/")
 
     assert result == content
-    mock_lookup.assert_not_called()
 
 
 def _make_middleware(get_response):
@@ -511,3 +484,120 @@ def test_middleware_logs_exception_and_returns_original():
         mock_logger.exception.assert_called_once_with(
             "Failed to inject yanked attributes"
         )
+
+
+@patch("pulp_trustify.yank.settings", _make_settings())
+@patch("pulp_trustify.yank.url_to_purl")
+@patch("pulp_trustify.gate.check_purls")
+def test_live_lookup_vulnerable(
+    mock_check_purls: Mock,
+    mock_url_to_purl: Mock,
+):
+    """Live lookup returns filename->reason for vulnerable PURLs."""
+    mock_url_to_purl.side_effect = [
+        "pkg:pypi/urllib3@2.6.2",
+        "pkg:pypi/six@1.17.0",
+    ]
+    mock_check_purls.return_value = {
+        "pkg:pypi/urllib3@2.6.2": [CVE_1, CVE_2],
+    }
+    mock_models = Mock()
+    mock_models._get_client.return_value = Mock()
+
+    with patch.dict(
+        sys.modules,
+        {"pulp_trustify.app.models": mock_models},
+    ):
+        result = _live_lookup(
+            [
+                "urllib3-2.6.2-py3-none-any.whl",
+                "six-1.17.0-py2.py3-none-any.whl",
+            ]
+        )
+
+    expected = {
+        "urllib3-2.6.2-py3-none-any.whl": (f"{_P}:\n- {URL_1}\n- {URL_2}"),
+    }
+    assert result == expected
+
+
+@patch("pulp_trustify.yank.settings", _make_settings())
+@patch("pulp_trustify.yank.url_to_purl")
+@patch("pulp_trustify.gate.check_purls")
+def test_live_lookup_clean(
+    mock_check_purls: Mock,
+    mock_url_to_purl: Mock,
+):
+    """Live lookup returns empty dict when all PURLs clean."""
+    mock_url_to_purl.side_effect = [
+        "pkg:pypi/urllib3@2.6.3",
+        "pkg:pypi/six@1.17.0",
+    ]
+    mock_check_purls.return_value = {}
+    mock_models = Mock()
+    mock_models._get_client.return_value = Mock()
+
+    with patch.dict(
+        sys.modules,
+        {"pulp_trustify.app.models": mock_models},
+    ):
+        result = _live_lookup(
+            [
+                "urllib3-2.6.3-py3-none-any.whl",
+                "six-1.17.0-py2.py3-none-any.whl",
+            ]
+        )
+
+    assert result == {}
+
+
+@patch("pulp_trustify.yank.settings", _make_settings())
+@patch("pulp_trustify.yank.url_to_purl")
+def test_live_lookup_unparseable_filenames(
+    mock_url_to_purl: Mock,
+):
+    """Live lookup returns empty dict for unparseable filenames."""
+    mock_url_to_purl.return_value = None
+
+    result = _live_lookup(["invalid-filename.txt", "another-bad-file.bin"])
+
+    assert result == {}
+
+
+@patch("pulp_trustify.yank.settings", _make_settings(TRUSTIFY_URL=""))
+@patch("pulp_trustify.yank._label_fallback")
+def test_inject_yanked_html_no_trustify_url(
+    mock_fallback: Mock, html_sample: bytes
+):
+    """Use label fallback when TRUSTIFY_URL is empty."""
+    reason = URL_1
+    mock_fallback.return_value = {
+        "urllib3-2.6.2-py3-none-any.whl": reason,
+    }
+
+    result = _inject_yanked_html(html_sample, "/simple/urllib3/")
+
+    html = result.decode("utf-8")
+    assert f'data-yanked="{reason}"' in html
+    mock_fallback.assert_called_once()
+
+
+@patch("pulp_trustify.yank.settings", _make_settings())
+@patch("pulp_trustify.yank._live_lookup")
+@patch("pulp_trustify.yank._label_fallback")
+def test_inject_yanked_html_fallback_on_live_error(
+    mock_fallback: Mock, mock_live: Mock, html_sample: bytes
+):
+    """Use label fallback when live lookup raises exception."""
+    mock_live.side_effect = ValueError("API error")
+    reason = URL_1
+    mock_fallback.return_value = {
+        "urllib3-2.6.2-py3-none-any.whl": reason,
+    }
+
+    result = _inject_yanked_html(html_sample, "/simple/urllib3/")
+
+    html = result.decode("utf-8")
+    assert f'data-yanked="{reason}"' in html
+    mock_live.assert_called_once()
+    mock_fallback.assert_called_once()

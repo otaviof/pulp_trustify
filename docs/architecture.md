@@ -16,8 +16,7 @@ flowchart TD
     A --> I["Shared Detection Core<br/>gate.py → check_purl()"]
     B --> I
     C --> I
-    D2 -.reads.-> J["Scanner Labels<br/>(pulp_labels)"]
-    C -.writes.-> J
+    D2 --> I
 ```
 
 | Layer | Timing | Action | Scope |
@@ -37,7 +36,7 @@ Each protection layer checks Trustify at a different point in the artifact lifec
 | Upload Gate | Sync/upload time | Point-in-time | Fails entire sync |
 | Event-Driven Scanner | Post-sync (async) | Same as gate | Selective removal |
 | Periodic Scanner | Scheduled interval | As recent as last run | Selective removal |
-| Yank Warnings | Index request time | Scanner labels | Advisory only |
+| Yank Warnings | Index request time | Real-time | Advisory only |
 
 The upload gate and event-driven scanner query the same Trustify data at approximately the same time, but they serve different operational modes. The gate provides all-or-nothing sync blocking (strict — no vulnerable content enters, but the entire sync fails if any package is vulnerable). Event-driven scanning provides selective remediation (permissive — syncs always succeed, vulnerable content is removed post-sync). Operators choose based on their tolerance for sync failures vs. temporary exposure windows covered by the download guard.
 

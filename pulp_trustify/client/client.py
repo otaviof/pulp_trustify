@@ -87,7 +87,7 @@ def _normalize_analyze(raw: dict) -> dict[str, Any]:
                     },
                 }
             )
-        items.append({"details": details})
+        items.append({"purl": purl_key, "details": details})
     return {"items": items}
 
 

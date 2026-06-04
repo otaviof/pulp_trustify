@@ -45,7 +45,7 @@ The detection mode (analyze vs. search fallback) is auto-selected based on Trust
 
 | Setting | Default | Description |
 |:--------|:--------|:------------|
-| `TRUSTIFY_YANK_VULNERABLE` | `True` | Inject PEP 592 `data-yanked` into Simple API responses. See [Yank Warnings](yank.md). |
+| `TRUSTIFY_YANK_VULNERABLE` | `True` | Inject PEP 592 `data-yanked` into Simple API responses. Requires `TRUSTIFY_URL` for live queries; falls back to scanner labels without it. See [Yank Warnings](yank.md). |
 | `TRUSTIFY_YANK_MAX_CVES` | `3` | Maximum number of CVE URLs in the yanked reason string |
 
 ## Recommended Configuration

@@ -5,7 +5,7 @@ import logging
 import pytest
 
 from pulp_trustify.client.client import TrustifyError, build_trustify_url
-from pulp_trustify.gate import gate_purl
+from pulp_trustify.gate import check_purls, gate_purl
 
 BASE_URL = "https://trustify.example.com"
 
@@ -295,3 +295,177 @@ def test_blocks_without_base_url():
     assert "CVE-2023-1234" in error_msg
     assert "Details:" not in error_msg
     assert "vulnerabilities" not in error_msg
+
+
+def test_check_purls_all_clean():
+    """Return empty dict when analyze returns items with empty details."""
+    response = {
+        "items": [
+            {"purl": "pkg:pypi/requests@2.32.0", "details": []},
+            {"purl": "pkg:pypi/urllib3@2.6.3", "details": []},
+        ],
+    }
+    client = _FakeClient(response=response)
+
+    result = check_purls(
+        client=client,
+        purls=["pkg:pypi/requests@2.32.0", "pkg:pypi/urllib3@2.6.3"],
+        threshold="critical",
+        fail_open=False,
+    )
+
+    assert result == {}
+
+
+def test_check_purls_all_vulnerable():
+    """Return dict mapping vulnerable PURLs to CVE IDs."""
+    response = {
+        "items": [
+            {
+                "purl": "pkg:pypi/requests@2.28.0",
+                "details": [
+                    {
+                        "entry": {"cve": "CVE-2023-1234"},
+                        "base_score": {"severity": "critical"},
+                    },
+                    {
+                        "entry": {"cve": "CVE-2023-5678"},
+                        "base_score": {"severity": "high"},
+                    },
+                ],
+            },
+            {
+                "purl": "pkg:pypi/urllib3@2.6.2",
+                "details": [
+                    {
+                        "entry": {"cve": "CVE-2026-21441"},
+                        "base_score": {"severity": "high"},
+                    }
+                ],
+            },
+        ],
+    }
+    client = _FakeClient(response=response)
+
+    result = check_purls(
+        client=client,
+        purls=["pkg:pypi/requests@2.28.0", "pkg:pypi/urllib3@2.6.2"],
+        threshold="high",
+        fail_open=False,
+    )
+
+    assert result == {
+        "pkg:pypi/requests@2.28.0": ["CVE-2023-1234", "CVE-2023-5678"],
+        "pkg:pypi/urllib3@2.6.2": ["CVE-2026-21441"],
+    }
+
+
+def test_check_purls_mixed():
+    """Return only vulnerable PURLs when some are clean."""
+    response = {
+        "items": [
+            {
+                "purl": "pkg:pypi/requests@2.28.0",
+                "details": [
+                    {
+                        "entry": {"cve": "CVE-2023-1234"},
+                        "base_score": {"severity": "critical"},
+                    }
+                ],
+            },
+            {
+                "purl": "pkg:pypi/urllib3@2.6.3",
+                "details": [
+                    {
+                        "entry": {"cve": "CVE-2023-9999"},
+                        "base_score": {"severity": "low"},
+                    }
+                ],
+            },
+        ],
+    }
+    client = _FakeClient(response=response)
+
+    result = check_purls(
+        client=client,
+        purls=[
+            "pkg:pypi/requests@2.28.0",
+            "pkg:pypi/urllib3@2.6.3",
+        ],
+        threshold="critical",
+        fail_open=False,
+    )
+
+    assert result == {
+        "pkg:pypi/requests@2.28.0": ["CVE-2023-1234"],
+    }
+
+
+def test_check_purls_fallback_triggered():
+    """Fall back to check_purl when analyze returns empty."""
+    search_response = {
+        "items": [
+            {
+                "identifier": "CVE-2026-21441",
+                "description": (
+                    "Starting in version 1.22 and prior to version 2.6.3"
+                ),
+                "average_severity": "high",
+            }
+        ],
+        "total": 1,
+    }
+    client = _FakeClient(
+        response={"items": []},
+        search_response=search_response,
+    )
+
+    result = check_purls(
+        client=client,
+        purls=["pkg:pypi/urllib3@2.6.2"],
+        threshold="high",
+        fail_open=False,
+    )
+
+    assert result == {"pkg:pypi/urllib3@2.6.2": ["CVE-2026-21441"]}
+
+
+def test_check_purls_fail_open():
+    """Return empty dict when analyze raises TrustifyError with fail_open."""
+    client = _FakeClient(error=TrustifyError("API unavailable"))
+
+    result = check_purls(
+        client=client,
+        purls=["pkg:pypi/requests@2.28.0"],
+        threshold="critical",
+        fail_open=True,
+    )
+
+    assert result == {}
+
+
+def test_check_purls_fail_closed():
+    """Re-raise TrustifyError when analyze fails with fail_open=False."""
+    client = _FakeClient(error=TrustifyError("API unavailable"))
+
+    with pytest.raises(TrustifyError, match="API unavailable"):
+        check_purls(
+            client=client,
+            purls=["pkg:pypi/requests@2.28.0"],
+            threshold="critical",
+            fail_open=False,
+        )
+
+
+def test_check_purls_empty_input():
+    """Return empty dict when no PURLs provided."""
+    client = _FakeClient()
+
+    result = check_purls(
+        client=client,
+        purls=[],
+        threshold="critical",
+        fail_open=False,
+    )
+
+    assert result == {}

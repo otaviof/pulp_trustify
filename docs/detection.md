@@ -1,6 +1,6 @@
 # Detection Pipeline
 
-How `pulp_trustify` queries [Trustify](https://github.com/guacsec/trustify) to determine whether a package is vulnerable. All four protection layers share this logic via `gate.py:check_purl()`.
+How `pulp_trustify` queries [Trustify](https://github.com/guacsec/trustify) to determine whether a package is vulnerable. All four protection layers share this logic via `gate.py`. Single-PURL checks use `check_purl()`; batch checks (scanner, yank) use `check_purls()`.
 
 See [Trustify Vulnerability Correlation Overview](https://docs.guac.sh/trustify/vulnerability-correlation-overview/) for how Trustify correlates advisories to packages upstream.
 
