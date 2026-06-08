@@ -4,7 +4,11 @@ from pulpcore.plugin.models import Repository
 from pulpcore.plugin.serializers import ContentGuardSerializer
 from rest_framework import serializers
 
-from pulp_trustify.app.models import ScanAdvisory, TrustifyGuard
+from pulp_trustify.app.models import (
+    GateAdvisory,
+    ScanAdvisory,
+    TrustifyGuard,
+)
 
 
 class TrustifyGuardSerializer(ContentGuardSerializer):
@@ -43,5 +47,20 @@ class ScanAdvisorySerializer(serializers.ModelSerializer):
             "detection_mode",
             "action",
             "scanned_at",
+        ]
+        read_only_fields = fields
+
+
+class GateAdvisorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = GateAdvisory
+        fields = [
+            "purl",
+            "cve_ids",
+            "details",
+            "severity",
+            "detection_mode",
+            "action",
+            "checked_at",
         ]
         read_only_fields = fields

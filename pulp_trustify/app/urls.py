@@ -3,6 +3,7 @@
 from django.urls import path
 
 from pulp_trustify.app.viewsets import (
+    GateAdvisoryViewSet,
     NpmBulkAdvisoryView,
     ScanAdvisoryViewSet,
     ScanViewSet,
@@ -18,6 +19,11 @@ urlpatterns = [
         "pulp/api/v3/trustify/advisories/",
         ScanAdvisoryViewSet.as_view({"get": "list"}),
         name="advisories",
+    ),
+    path(
+        "pulp/api/v3/trustify/gate-advisories/",
+        GateAdvisoryViewSet.as_view({"get": "list"}),
+        name="gate-advisories",
     ),
     path(
         "pulp/api/v3/trustify/-/npm/v1/security/advisories/bulk",

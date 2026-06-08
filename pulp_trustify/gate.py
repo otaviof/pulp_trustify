@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from pulp_trustify.client.client import (
     TrustifyError,
@@ -16,10 +18,21 @@ from pulp_trustify.version import (
     purl_version,
 )
 
+if TYPE_CHECKING:
+    from pulp_trustify.scanner import VulnerabilityDetail
+
 logger = logging.getLogger(__name__)
 
 MSG_API_UNAVAILABLE = "Trustify API unavailable"
 MSG_BLOCKED_CVE = "Blocked due to CVE"
+
+
+@dataclass(frozen=True)
+class GateResult:
+    cve_ids: list[str] = field(default_factory=list)
+    all_findings: list[dict] = field(default_factory=list)
+    details: list[VulnerabilityDetail] = field(default_factory=list)
+    detection_mode: str = ""
 
 
 def check_purl(
@@ -241,3 +254,124 @@ def fallback_search(
         )
 
     return filter_vulnerabilities(results, threshold)
+
+
+def check_purl_with_mode(
+    client: VulnerabilityChecker,
+    purl: str,
+    threshold: str,
+    fail_open: bool,
+    base_url: str = "",
+) -> GateResult:
+    """Check a PURL against Trustify. Returns GateResult with all
+    findings and metadata.
+
+    Tries analyze first, falls back to search-based detection if
+    analyze returns empty results. Tracks detection mode and builds
+    VulnerabilityDetail objects for above-threshold findings.
+    """
+    from pulp_trustify.scanner import VulnerabilityDetail
+
+    logger.debug(
+        "Checking PURL '%s' against threshold='%s'",
+        purl,
+        threshold,
+    )
+    try:
+        response = client.analyze([purl])
+    except TrustifyError as exc:
+        if fail_open:
+            logger.warning(
+                "Trustify analysis failed (fail_open=True): %s",
+                exc,
+            )
+            return GateResult()
+        raise PermissionError(MSG_API_UNAVAILABLE) from exc
+
+    all_details: list[dict] = []
+    for item in response.get("items", []):
+        all_details.extend(item.get("details", []))
+
+    logger.debug(
+        "Analyze returned %d items for '%s'",
+        len(all_details),
+        purl,
+    )
+
+    if all_details:
+        matching = filter_vulnerabilities(all_details, threshold)
+        if matching:
+            cve_ids = [
+                entry.get("entry", {}).get("cve", "unknown") for entry in matching
+            ]
+            details = [
+                VulnerabilityDetail(
+                    cve_id=entry.get("entry", {}).get("cve", "unknown"),
+                    severity=(
+                        entry.get("base_score", {}).get("severity", "unknown")
+                    ),
+                    trustify_url=build_trustify_url(
+                        base_url,
+                        entry.get("entry", {}).get("cve", "unknown"),
+                    ),
+                )
+                for entry in matching
+            ]
+            logger.info(
+                "PURL '%s' has %d CVEs at or above '%s': %s",
+                purl,
+                len(cve_ids),
+                threshold,
+                ", ".join(cve_ids),
+            )
+            return GateResult(
+                cve_ids=cve_ids,
+                all_findings=all_details,
+                details=details,
+                detection_mode="analyze",
+            )
+        logger.debug("PURL '%s' clean via analyze", purl)
+        return GateResult(
+            all_findings=all_details,
+            detection_mode="analyze",
+        )
+
+    logger.debug("Analyze empty for '%s', falling back to search", purl)
+    try:
+        matching = fallback_search(client, purl, threshold)
+    except TrustifyError as exc:
+        if fail_open:
+            logger.warning(
+                "Trustify search fallback failed (fail_open=True): %s",
+                exc,
+            )
+            return GateResult()
+        raise PermissionError(MSG_API_UNAVAILABLE) from exc
+
+    if matching:
+        cve_ids = [
+            entry.get("entry", {}).get("cve", "unknown") for entry in matching
+        ]
+        details = [
+            VulnerabilityDetail(
+                cve_id=entry.get("entry", {}).get("cve", "unknown"),
+                severity=(entry.get("base_score", {}).get("severity", "unknown")),
+                trustify_url=build_trustify_url(
+                    base_url,
+                    entry.get("entry", {}).get("cve", "unknown"),
+                ),
+            )
+            for entry in matching
+        ]
+        logger.info(
+            "PURL '%s' blocked via fallback: %s",
+            purl,
+            ", ".join(cve_ids),
+        )
+        return GateResult(
+            cve_ids=cve_ids,
+            all_findings=matching,
+            details=details,
+            detection_mode="search_fallback",
+        )
+    return GateResult()

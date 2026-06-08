@@ -27,6 +27,8 @@ The detection mode (analyze vs. search fallback) is auto-selected based on Trust
 | Setting | Default | Description |
 |:--------|:--------|:------------|
 | `TRUSTIFY_GATE_UPLOADS` | `True` | Block vulnerable packages at upload time via Django's `pre_save` signal. Set to `False` to disable. See [Upload Gate](upload-gate.md). |
+| `TRUSTIFY_GATE_LABEL_CONTENT` | `True` | Tag uploaded content with `trustify.*` labels in `pulp_labels` during upload checks. Labels include scan timestamp, detection mode, CVE IDs, and clean/vulnerable status. |
+| `TRUSTIFY_GATE_ADVISORY` | `True` | Record a `GateAdvisory` per allowed upload check (below-threshold or clean). Blocked uploads are already logged and do not create advisories. |
 
 ## Scanner
 

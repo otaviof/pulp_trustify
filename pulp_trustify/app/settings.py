@@ -40,6 +40,15 @@ Protection layers
 TRUSTIFY_GATE_UPLOADS
     Block vulnerable packages at upload time via Django's
     ``pre_save`` signal on ``PythonPackageContent``.
+TRUSTIFY_GATE_LABEL_CONTENT
+    Label uploaded content with scan results in
+    ``pulp_labels``.  Adds ``trustify.scanned``,
+    ``trustify.scanned_at``, ``trustify.detected_by``,
+    ``trustify.cves``, and ``trustify.clean`` labels.
+TRUSTIFY_GATE_ADVISORY
+    Record a ``GateAdvisory`` for each upload check
+    (blocked or allowed).  Enables audit trail for
+    upload gate decisions.
 TRUSTIFY_YANK_VULNERABLE
     Inject PEP 592 ``data-yanked`` attributes into the
     Simple API index so pip shows an inline warning before
@@ -125,6 +134,8 @@ TRUSTIFY_CA_BUNDLE = ""
 TRUSTIFY_SEVERITY_THRESHOLD = "critical"
 TRUSTIFY_FAIL_OPEN = False
 TRUSTIFY_GATE_UPLOADS = True
+TRUSTIFY_GATE_LABEL_CONTENT = True
+TRUSTIFY_GATE_ADVISORY = True
 TRUSTIFY_SCAN_ENABLED = True
 TRUSTIFY_SCAN_REMOVE_CONTENT = True
 TRUSTIFY_SCAN_QUARANTINE_REPO = ""

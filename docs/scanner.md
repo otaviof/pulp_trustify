@@ -104,6 +104,8 @@ Tags each vulnerable content unit with metadata queryable via Pulp's `pulp_label
 
 Labels applied: `trustify.vulnerable`, `trustify.cves`, `trustify.severity`, `trustify.detected_by`, `trustify.scanned`, `trustify.source_repo`.
 
+**Upload-time labeling:** The upload gate (see [Upload Gate — Upload-Time Labeling](upload-gate.md#upload-time-labeling)) applies the same label keys (`trustify.scanned`, `trustify.detected_by`, `trustify.cves`) at upload time. Content entering via upload is annotated immediately with the same structure the scanner uses, providing consistent metadata across both protection layers. The scanner's `trustify.vulnerable` and `trustify.source_repo` labels are scanner-specific and not set at upload time.
+
 ```bash
 # List all vulnerable content across all repos
 pulp python content list --pulp-label-select "trustify.vulnerable=true"

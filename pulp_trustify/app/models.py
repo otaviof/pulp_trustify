@@ -103,3 +103,22 @@ class ScanAdvisory(Model):
             Index(fields=["repository", "scanned_at"]),
             Index(fields=["purl"]),
         ]
+
+
+class GateAdvisory(Model):
+    """Records an upload gate check result."""
+
+    purl = CharField(max_length=512)
+    cve_ids = JSONField(default=list)
+    details = JSONField(default=list)
+    severity = CharField(max_length=16)
+    detection_mode = CharField(max_length=16)
+    action = CharField(max_length=16)
+    checked_at = DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            Index(fields=["purl"]),
+            Index(fields=["checked_at"]),
+            Index(fields=["action"]),
+        ]

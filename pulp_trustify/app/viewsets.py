@@ -15,8 +15,13 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from pulp_trustify.app.models import ScanAdvisory, TrustifyGuard
+from pulp_trustify.app.models import (
+    GateAdvisory,
+    ScanAdvisory,
+    TrustifyGuard,
+)
 from pulp_trustify.app.serializers import (
+    GateAdvisorySerializer,
     ScanAdvisorySerializer,
     ScanSerializer,
     TrustifyGuardSerializer,
@@ -72,6 +77,12 @@ class ScanViewSet(viewsets.ViewSet):
 class ScanAdvisoryViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ScanAdvisory.objects.all()
     serializer_class = ScanAdvisorySerializer
+    permission_classes = [IsAuthenticated]
+
+
+class GateAdvisoryViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = GateAdvisory.objects.all()
+    serializer_class = GateAdvisorySerializer
     permission_classes = [IsAuthenticated]
 
 

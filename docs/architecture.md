@@ -24,7 +24,7 @@ flowchart TD
 | Layer | Timing | Action | Scope |
 |:------|:-------|:-------|:------|
 | [Download Guard](guard.md) | Per-request | Blocks download (403) | Single artifact |
-| [Upload Gate](upload-gate.md) | Per-upload | Rejects upload (400) | Single package |
+| [Upload Gate](upload-gate.md) | Per-upload | Rejects upload (400), labels content, records advisory | Single package |
 | [Scanner](scanner.md) | On-demand / periodic / event-driven | Label, quarantine, remove, advisory | Entire repository |
 | [Yank Warnings](yank.md) | Per-index-request | Injects PEP 592 `data-yanked` | PyPI Simple API response |
 | [NPM Deprecation](deprecate.md) | Per-packument-request | Injects `deprecated` field | NPM packument response |
@@ -37,13 +37,15 @@ Each protection layer checks Trustify at a different point in the artifact lifec
 | Layer | Checks at | Data freshness | Behavior on vulnerability |
 |:------|:----------|:---------------|:--------------------------|
 | Download Guard | Download time | Freshest (real-time) | Blocks download (403) |
-| Upload Gate | Sync/upload time | Point-in-time | Fails entire sync |
-| Event-Driven Scanner | Post-sync (async) | Same as gate | Selective removal |
-| Periodic Scanner | Scheduled interval | As recent as last run | Selective removal |
+| Upload Gate | Sync/upload time | Point-in-time | Fails entire sync, labels content, records advisory |
+| Event-Driven Scanner | Post-sync (async) | Same as gate | Selective removal, labels content, records advisory |
+| Periodic Scanner | Scheduled interval | As recent as last run | Selective removal, labels content, records advisory |
 | Yank Warnings | Index request time | Real-time | Advisory only |
 | NPM Audit | Audit request time | Real-time | Advisory data (npm format) |
 
 The upload gate and event-driven scanner query the same Trustify data at approximately the same time, but they serve different operational modes. The gate provides all-or-nothing sync blocking (strict — no vulnerable content enters, but the entire sync fails if any package is vulnerable). Event-driven scanning provides selective remediation (permissive — syncs always succeed, vulnerable content is removed post-sync). Operators choose based on their tolerance for sync failures vs. temporary exposure windows covered by the download guard.
+
+Both the upload gate and scanner apply `trustify.*` labels to content and record advisory models (`GateAdvisory` vs. `ScanAdvisory`), providing consistent metadata across different protection layers. Upload-time labels capture the point-in-time state when content enters Pulp; scanner labels reflect periodic or event-driven re-checks.
 
 ## PURL Extraction
 

@@ -178,29 +178,35 @@ def _make_settings(**overrides):
 
 def _make_instance(name="test-pkg", version="1.0.0"):
     """Create mock PythonPackageContent instance."""
-    return SimpleNamespace(name=name, version=version)
+    inst = SimpleNamespace(name=name, version=version)
+    inst.pulp_labels = {}
+    return inst
 
 
 def _fake_models():
     """Build fake pulp_trustify.app.models module."""
     mod = ModuleType("pulp_trustify.app.models")
     setattr(mod, "_get_client", MagicMock())
+    gate_advisory = MagicMock()
+    gate_advisory.objects = MagicMock()
+    setattr(mod, "GateAdvisory", gate_advisory)
     return mod
 
 
-@patch("pulp_trustify.gate.gate_purl")
+@patch("pulp_trustify.gate.check_purl_with_mode")
 @patch.dict(
     sys.modules,
     {"pulp_trustify.app.models": _fake_models()},
 )
 @patch("django.conf.settings", _make_settings())
-def test_upload_blocked_logs_warning(mock_gate, caplog):
+def test_upload_blocked_logs_warning(mock_check, caplog):
     """Upload blocked produces WARNING log."""
     from rest_framework.exceptions import ValidationError
 
+    from pulp_trustify.gate import GateResult
     from pulp_trustify.upload import upload_gate
 
-    mock_gate.side_effect = PermissionError("Blocked due to CVE: CVE-2023-1234")
+    mock_check.return_value = GateResult(cve_ids=["CVE-2023-1234"])
     instance = _make_instance(name="requests", version="2.28.0")
 
     with caplog.at_level(logging.DEBUG, logger="pulp_trustify"):

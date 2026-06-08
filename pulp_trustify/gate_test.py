@@ -5,7 +5,12 @@ import logging
 import pytest
 
 from pulp_trustify.client.client import TrustifyError, build_trustify_url
-from pulp_trustify.gate import check_purls, gate_purl
+from pulp_trustify.gate import (
+    GateResult,
+    check_purl_with_mode,
+    check_purls,
+    gate_purl,
+)
 
 BASE_URL = "https://trustify.example.com"
 
@@ -531,3 +536,207 @@ def test_gate_purl_error_message_no_base_url():
     error_msg = str(exc_info.value)
     assert "Blocked due to CVE: CVE-2023-1234" in error_msg
     assert "vulnerabilities" not in error_msg
+
+
+def test_check_purl_with_mode_vulnerable():
+    """Return GateResult with CVEs when analyze finds critical vuln."""
+    response = {
+        "items": [
+            {
+                "purl": "pkg:pypi/requests@2.28.0",
+                "details": [
+                    {
+                        "entry": {"cve": "CVE-2023-1234"},
+                        "base_score": {"severity": "critical"},
+                    }
+                ],
+            }
+        ],
+    }
+    client = _FakeClient(response=response)
+
+    result = check_purl_with_mode(
+        client=client,
+        purl="pkg:pypi/requests@2.28.0",
+        threshold="critical",
+        fail_open=False,
+        base_url=BASE_URL,
+    )
+
+    assert isinstance(result, GateResult)
+    assert result.cve_ids == ["CVE-2023-1234"]
+    assert result.detection_mode == "analyze"
+    assert len(result.all_findings) == 1
+    assert len(result.details) == 1
+    assert result.details[0].cve_id == "CVE-2023-1234"
+    assert result.details[0].severity == "critical"
+    assert BASE_URL in result.details[0].trustify_url
+
+
+def test_check_purl_with_mode_clean():
+    """Return GateResult with empty cve_ids when analyze returns clean."""
+    response = {
+        "items": [
+            {
+                "purl": "pkg:pypi/requests@2.32.0",
+                "details": [],
+            }
+        ],
+    }
+    client = _FakeClient(response=response)
+
+    result = check_purl_with_mode(
+        client=client,
+        purl="pkg:pypi/requests@2.32.0",
+        threshold="critical",
+        fail_open=False,
+        base_url=BASE_URL,
+    )
+
+    assert isinstance(result, GateResult)
+    assert result.cve_ids == []
+    assert result.all_findings == []
+    assert result.details == []
+    assert result.detection_mode == ""
+
+
+def test_check_purl_with_mode_below_threshold():
+    """Return findings but no cve_ids when severity below threshold."""
+    response = {
+        "items": [
+            {
+                "purl": "pkg:pypi/requests@2.28.0",
+                "details": [
+                    {
+                        "entry": {"cve": "CVE-2023-5678"},
+                        "base_score": {"severity": "medium"},
+                    }
+                ],
+            }
+        ],
+    }
+    client = _FakeClient(response=response)
+
+    result = check_purl_with_mode(
+        client=client,
+        purl="pkg:pypi/requests@2.28.0",
+        threshold="critical",
+        fail_open=False,
+        base_url=BASE_URL,
+    )
+
+    assert isinstance(result, GateResult)
+    assert result.cve_ids == []
+    assert len(result.all_findings) == 1
+    assert result.all_findings[0]["entry"]["cve"] == "CVE-2023-5678"
+    assert result.details == []
+    assert result.detection_mode == "analyze"
+
+
+def test_check_purl_with_mode_fallback():
+    """Return GateResult with search_fallback mode when analyze empty."""
+    search_response = {
+        "items": [
+            {
+                "identifier": "CVE-2026-21441",
+                "title": "urllib3 vulnerable to ...",
+                "description": (
+                    "Starting in version 1.22 and prior to version 2.6.3"
+                ),
+                "average_severity": "high",
+                "average_score": 8.9,
+                "advisories": [],
+            }
+        ],
+        "total": 1,
+    }
+    client = _FakeClient(
+        response={"items": []},
+        search_response=search_response,
+    )
+
+    result = check_purl_with_mode(
+        client=client,
+        purl="pkg:pypi/urllib3@2.6.2",
+        threshold="high",
+        fail_open=False,
+        base_url=BASE_URL,
+    )
+
+    assert isinstance(result, GateResult)
+    assert result.cve_ids == ["CVE-2026-21441"]
+    assert result.detection_mode == "search_fallback"
+    assert len(result.all_findings) > 0
+    assert len(result.details) == 1
+    assert result.details[0].cve_id == "CVE-2026-21441"
+
+
+def test_check_purl_with_mode_fail_open():
+    """Return empty GateResult when API fails with fail_open=True."""
+    client = _FakeClient(error=TrustifyError("API unavailable"))
+
+    result = check_purl_with_mode(
+        client=client,
+        purl="pkg:pypi/requests@2.28.0",
+        threshold="critical",
+        fail_open=True,
+        base_url=BASE_URL,
+    )
+
+    assert isinstance(result, GateResult)
+    assert result.cve_ids == []
+    assert result.all_findings == []
+    assert result.details == []
+    assert result.detection_mode == ""
+
+
+def test_check_purl_with_mode_fail_closed():
+    """Raise PermissionError when API fails with fail_open=False."""
+    client = _FakeClient(error=TrustifyError("API unavailable"))
+
+    with pytest.raises(PermissionError, match="Trustify API unavailable"):
+        check_purl_with_mode(
+            client=client,
+            purl="pkg:pypi/requests@2.28.0",
+            threshold="critical",
+            fail_open=False,
+            base_url=BASE_URL,
+        )
+
+
+def test_check_purl_with_mode_details_urls():
+    """VulnerabilityDetail URLs include base_url when set."""
+    response = {
+        "items": [
+            {
+                "purl": "pkg:pypi/requests@2.28.0",
+                "details": [
+                    {
+                        "entry": {"cve": "CVE-2023-1234"},
+                        "base_score": {"severity": "critical"},
+                    },
+                    {
+                        "entry": {"cve": "CVE-2023-5678"},
+                        "base_score": {"severity": "high"},
+                    },
+                ],
+            }
+        ],
+    }
+    client = _FakeClient(response=response)
+
+    result = check_purl_with_mode(
+        client=client,
+        purl="pkg:pypi/requests@2.28.0",
+        threshold="high",
+        fail_open=False,
+        base_url=BASE_URL,
+    )
+
+    assert len(result.details) == 2
+    assert result.details[0].trustify_url == (
+        f"{BASE_URL}/vulnerabilities/CVE-2023-1234"
+    )
+    assert result.details[1].trustify_url == (
+        f"{BASE_URL}/vulnerabilities/CVE-2023-5678"
+    )
