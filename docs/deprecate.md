@@ -36,7 +36,7 @@ The wrapper skips processing when any of these conditions is false:
 1. `pulp_npm` is installed
 2. `TRUSTIFY_DEPRECATE_VULNERABLE` is enabled (default: `True`)
 3. Response body is not empty
-4. Content-Type is `application/json`
+4. Content-Type is `application/json` or `text/plain` (pulp_npm serves packuments as `text/plain`)
 5. Packument has a `versions` object
 
 All checks are fail-safe: any exception during injection is caught, logged at `ERROR` level, and the original response is returned unmodified. The wrapper never blocks a packument response, it only adds metadata.

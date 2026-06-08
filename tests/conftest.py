@@ -42,7 +42,13 @@ class PulpAPI:
 @pytest.fixture()
 def trustify_client() -> TrustifyClient:
     url = os.environ.get("TRUSTIFY_URL", "http://localhost:9010")
-    return TrustifyClient(url=url, issuer_url="")
+    return TrustifyClient(
+        url=url,
+        issuer_url=os.environ.get("TRUSTIFY_ISSUER_URL", ""),
+        client_id=os.environ.get("TRUSTIFY_CLIENT_ID", "cli"),
+        client_secret=os.environ.get("TRUSTIFY_CLIENT_SECRET", ""),
+        ca_bundle=os.environ.get("TRUSTIFY_CA_BUNDLE", ""),
+    )
 
 
 @pytest.fixture(scope="session")
@@ -108,6 +114,31 @@ def upload_package(pulp_api):
                 data={
                     "repository": repo_href,
                     "relative_path": filename,
+                },
+                files={"file": f},
+            )
+            resp.raise_for_status()
+            return resp.json()["task"]
+
+    return _upload
+
+
+@pytest.fixture(scope="session")
+def upload_npm_package(pulp_api):
+    def _upload(
+        repo_href: str,
+        file_path: str,
+        name: str,
+        version: str,
+    ) -> str:
+        url = f"{pulp_api.api_url}/content/npm/packages/"
+        with open(file_path, "rb") as f:
+            resp = pulp_api.post(
+                url,
+                data={
+                    "repository": repo_href,
+                    "name": name,
+                    "version": version,
                 },
                 files={"file": f},
             )

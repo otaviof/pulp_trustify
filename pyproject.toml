@@ -95,6 +95,7 @@ markers = [
     "e2e: requires live Pulp + Trustify",
     "gate: upload gate (requires GATE_UPLOADS=true)",
     "guard: download guard",
+    "npm: NPM registry support",
     "scan: scanner task",
     "status: plugin registration",
 ]

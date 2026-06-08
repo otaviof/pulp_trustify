@@ -315,3 +315,100 @@ def test_wrapped_handler_exception_returns_original():
 
         assert result == mock_response
         mock_logger.exception.assert_called_once()
+
+
+def test_wrapped_handler_text_plain_content_type():
+    """Wrapper processes text/plain responses (pulp_npm behavior)."""
+    from pulp_trustify.deprecate import wrap_npm_content_handler
+
+    packument = {
+        "name": "lodash",
+        "versions": {
+            "4.17.21": {"name": "lodash", "version": "4.17.21"},
+        },
+    }
+
+    mock_response = Mock()
+    mock_response.body = json.dumps(packument).encode("utf-8")
+    mock_response.content_type = "text/plain"
+    mock_response.status = 200
+
+    original_handler = Mock(return_value=mock_response)
+
+    mock_distribution = MagicMock()
+    mock_distribution.content_handler = original_handler
+
+    mock_npm_models = MagicMock()
+    mock_npm_models.NpmDistribution = mock_distribution
+
+    with (
+        patch("django.conf.settings", _make_settings()),
+        patch.dict(
+            "sys.modules",
+            {"pulp_npm.app.models": mock_npm_models},
+        ),
+        patch("pulp_trustify.deprecate.lookup_vulnerable") as mock_lookup,
+    ):
+        mock_lookup.return_value = {
+            "4.17.21": "Vulnerable",
+        }
+
+        wrap_npm_content_handler()
+
+        wrapped_handler = mock_distribution.content_handler
+        instance = Mock()
+        result = wrapped_handler(instance, "lodash")
+
+        assert result.status == 200
+        data = json.loads(result.body)
+        assert "deprecated" in data["versions"]["4.17.21"]
+
+
+def test_wrapped_handler_string_payload_body():
+    """Wrapper extracts ._value from StringPayload objects."""
+    from pulp_trustify.deprecate import wrap_npm_content_handler
+
+    packument = {
+        "name": "lodash",
+        "versions": {
+            "4.17.21": {"name": "lodash", "version": "4.17.21"},
+        },
+    }
+
+    mock_payload = Mock()
+    mock_payload._value = json.dumps(packument).encode("utf-8")
+
+    mock_response = Mock()
+    mock_response.body = mock_payload
+    mock_response.content_type = "application/json"
+    mock_response.status = 200
+
+    original_handler = Mock(return_value=mock_response)
+
+    mock_distribution = MagicMock()
+    mock_distribution.content_handler = original_handler
+
+    mock_npm_models = MagicMock()
+    mock_npm_models.NpmDistribution = mock_distribution
+
+    with (
+        patch("django.conf.settings", _make_settings()),
+        patch.dict(
+            "sys.modules",
+            {"pulp_npm.app.models": mock_npm_models},
+        ),
+        patch("pulp_trustify.deprecate.lookup_vulnerable") as mock_lookup,
+    ):
+        mock_lookup.return_value = {
+            "4.17.21": "Vulnerable",
+        }
+
+        wrap_npm_content_handler()
+
+        wrapped_handler = mock_distribution.content_handler
+        instance = Mock()
+        result = wrapped_handler(instance, "lodash")
+
+        assert result.status == 200
+        data = json.loads(result.body)
+        assert "deprecated" in data["versions"]["4.17.21"]

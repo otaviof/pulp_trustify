@@ -159,12 +159,23 @@ def wrap_npm_content_handler() -> None:
         if response is None:
             return response
         try:
-            body = response.body
+            raw_body = response.body
+            if not raw_body:
+                return response
+            # Payload has no sync public bytes accessor
+            if hasattr(raw_body, "_value"):
+                body = raw_body._value
+            else:
+                body = raw_body
             if not body:
                 return response
 
             content_type = getattr(response, "content_type", "")
-            if "application/json" not in content_type:
+            # pulp_npm serves packuments as text/plain
+            is_json = (
+                "application/json" in content_type or "text/plain" in content_type
+            )
+            if not is_json:
                 return response
 
             pkg_name = ""

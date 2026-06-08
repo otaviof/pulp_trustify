@@ -9,14 +9,16 @@
 
 Pulp plugin integrating [Trustify](https://github.com/guacsec/trustify) CVE intelligence for vulnerability-gated artifact serving. [Trustify](https://docs.guac.sh/trustify/) is a [GUAC](https://guac.sh/) project that ingests SBOMs and security advisories to identify vulnerable software components.
 
+Supports PyPI (Python) and NPM (JavaScript) package ecosystems.
+
 ## Architecture Overview
 
-Four complementary protection layers cover the full artifact lifecycle. **Guard** and **Upload Gate** are reactive (per-request blocking). **Scanner** is proactive (repository-wide sweep). **Yank Warnings** are advisory (inline pip warnings). Together they provide complete coverage:
+Four complementary protection layers cover the full artifact lifecycle. **Guard** and **Upload Gate** are reactive (per-request blocking). **Scanner** is proactive (repository-wide sweep). **Yank Warnings** and **NPM Deprecation** are advisory (inline warnings in pip/npm). Together they provide complete coverage:
 
 - **Past**: [Scanner](docs/scanner.md) finds packages already in the repository that have had CVEs disclosed since they were uploaded
 - **Present**: [Download Guard](docs/guard.md) blocks downloads of vulnerable packages right now
 - **Future**: [Upload Gate](docs/upload-gate.md) prevents new vulnerable packages from entering
-- **Awareness**: [Yank Warnings](docs/yank.md) surface CVE details in pip's output before the hard block
+- **Awareness**: [Yank Warnings](docs/yank.md) (PyPI) and [NPM Deprecation](docs/deprecate.md) surface CVE details in pip/npm output before the hard block
 
 All four layers share the same detection core (`gate.py`) and severity threshold.
 
@@ -85,7 +87,8 @@ Configure via `PULP_TRUSTIFY_*` env vars on the Pulp pods. See [Settings Referen
 | [docs/guard.md](docs/guard.md) | Download guard deep-dive |
 | [docs/upload-gate.md](docs/upload-gate.md) | Upload gate deep-dive |
 | [docs/scanner.md](docs/scanner.md) | Scanner and actions deep-dive |
-| [docs/yank.md](docs/yank.md) | PEP 592 yank warnings deep-dive |
+| [docs/yank.md](docs/yank.md) | PEP 592 yank warnings deep-dive (PyPI) |
+| [docs/deprecate.md](docs/deprecate.md) | NPM deprecation warnings deep-dive |
 | [docs/settings.md](docs/settings.md) | Full configuration reference and observability |
 | [docs/known-limitations.md](docs/known-limitations.md) | All caveats and constraints |
 | [deploy/README.md](deploy/README.md) | Deployment guide |

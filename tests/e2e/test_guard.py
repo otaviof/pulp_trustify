@@ -22,6 +22,7 @@ def test_guard_blocks_vulnerable_content(
     resp = requests.get(
         download_url,
         auth=pulp_api.session.auth,
+        verify=pulp_api.session.verify,
         allow_redirects=False,
     )
 
