@@ -162,3 +162,76 @@ def test_purl_normalization(mock_gate):
     mock_gate.assert_called_once()
     call_args = mock_gate.call_args
     assert call_args.kwargs["purl"] == "pkg:pypi/my-package@1.0"
+
+
+def _make_npm_instance(name="lodash", version="4.17.21"):
+    """Create mock NPM Package instance."""
+
+    class MockPackage:
+        pass
+
+    MockPackage.__module__ = "pulp_npm.app.models"
+    obj = MockPackage()
+    obj.name = name
+    obj.version = version
+    return obj
+
+
+@patch("pulp_trustify.gate.gate_purl")
+@patch.dict(
+    sys.modules,
+    {"pulp_trustify.app.models": _fake_models()},
+)
+@patch("django.conf.settings", _make_settings())
+def test_npm_upload_gating(mock_gate):
+    """NPM content gets pkg:npm PURL and is checked."""
+    from pulp_trustify.upload import upload_gate
+
+    instance = _make_npm_instance(name="lodash", version="4.17.21")
+
+    upload_gate(sender=None, instance=instance)
+
+    mock_gate.assert_called_once()
+    call_args = mock_gate.call_args
+    assert call_args.kwargs["purl"] == "pkg:npm/lodash@4.17.21"
+
+
+@patch("pulp_trustify.gate.gate_purl")
+@patch.dict(
+    sys.modules,
+    {"pulp_trustify.app.models": _fake_models()},
+)
+@patch("django.conf.settings", _make_settings())
+def test_npm_upload_scoped_package(mock_gate):
+    """Scoped NPM package gets correct PURL with %40."""
+    from pulp_trustify.upload import upload_gate
+
+    instance = _make_npm_instance(name="@angular/core", version="17.0.0")
+
+    upload_gate(sender=None, instance=instance)
+
+    mock_gate.assert_called_once()
+    call_args = mock_gate.call_args
+    assert call_args.kwargs["purl"] == "pkg:npm/%40angular/core@17.0.0"
+
+
+@patch("pulp_trustify.gate.gate_purl")
+@patch.dict(
+    sys.modules,
+    {"pulp_trustify.app.models": _fake_models()},
+)
+@patch("django.conf.settings", _make_settings())
+def test_npm_upload_blocks_vulnerable(mock_gate):
+    """NPM upload raises ValidationError on PermissionError."""
+    from rest_framework.exceptions import ValidationError
+
+    from pulp_trustify.upload import upload_gate
+
+    mock_gate.side_effect = PermissionError("Blocked due to CVE-2024-1234")
+    instance = _make_npm_instance(name="lodash", version="4.17.21")
+
+    with pytest.raises(
+        ValidationError,
+        match="Blocked due to CVE-2024-1234",
+    ):
+        upload_gate(sender=None, instance=instance)

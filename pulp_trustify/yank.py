@@ -28,30 +28,16 @@ import re
 
 from django.conf import settings
 
-from pulp_trustify.client.client import build_trustify_url
+from pulp_trustify.labels import (
+    build_reason,
+    labels_to_reasons,
+    lookup_vulnerable,
+)
 from pulp_trustify.purl import url_to_purl
 
 logger = logging.getLogger(__name__)
 
 _ANCHOR_RE = re.compile(r"(<a\s+[^>]*href=\"([^\"#]+)(?:#[^\"]*)?\")([^>]*>)")
-
-
-def _build_yanked_reason(
-    cve_ids: list[str],
-    base_url: str,
-    max_cves: int = 3,
-) -> str | None:
-    if not cve_ids:
-        return None
-    total = len(cve_ids)
-    shown = cve_ids[: max(max_cves, 1)]
-    _P = "Vulnerable package flagged by Trustify"
-    urls = [build_trustify_url(base_url, c) for c in shown]
-    count = f" ({len(shown)} of {total} CVEs)" if total > len(shown) else ""
-    if len(urls) == 1:
-        return f"{_P}{count}: {urls[0]}"
-    lines = "\n".join(f"- {u}" for u in urls)
-    return f"{_P}{count}:\n{lines}"
 
 
 def _live_lookup(
@@ -88,7 +74,7 @@ def _live_lookup(
     for filename, purl in filename_to_purl.items():
         cve_ids = vuln_map.get(purl, [])
         if cve_ids:
-            reason = _build_yanked_reason(cve_ids, base_url, max_cves)
+            reason = build_reason(cve_ids, base_url, max_cves)
             if reason:
                 result[filename] = reason
 
@@ -113,17 +99,7 @@ def _label_fallback(
     ).values_list("filename", "pulp_labels")
     base_url = getattr(settings, "TRUSTIFY_URL", "")
     max_cves = getattr(settings, "TRUSTIFY_YANK_MAX_CVES", 3)
-    result: dict[str, str] = {}
-    for filename, labels in qs:
-        if not labels:
-            continue
-        if labels.get("trustify.vulnerable") != "true":
-            continue
-        cve_ids = labels.get("trustify.cves", "").split()
-        reason = _build_yanked_reason(cve_ids, base_url, max_cves)
-        if reason:
-            result[filename] = reason
-    return result
+    return labels_to_reasons(qs, base_url, max_cves)
 
 
 def _href_to_filename(href: str) -> str:
@@ -146,26 +122,11 @@ def _inject_yanked_html(
     if not filenames:
         return content_bytes
 
-    if not getattr(settings, "TRUSTIFY_URL", ""):
-        yanked = _label_fallback(filenames)
-        source = "labels"
-    else:
-        try:
-            yanked = _live_lookup(filenames)
-            source = "live"
-        except Exception as exc:
-            logger.warning(
-                "Live yank query failed (%s), falling back to scanner labels",
-                exc,
-            )
-            yanked = _label_fallback(filenames)
-            source = "labels"
-
-    logger.debug(
-        "Yank lookup for %d files via %s: %d vulnerable",
-        len(filenames),
-        source,
-        len(yanked),
+    yanked = lookup_vulnerable(
+        filenames,
+        _live_lookup,
+        _label_fallback,
+        getattr(settings, "TRUSTIFY_URL", ""),
     )
 
     if not yanked:
@@ -198,26 +159,11 @@ def _inject_yanked_json(
     if not filenames:
         return content_bytes
 
-    if not getattr(settings, "TRUSTIFY_URL", ""):
-        yanked = _label_fallback(filenames)
-        source = "labels"
-    else:
-        try:
-            yanked = _live_lookup(filenames)
-            source = "live"
-        except Exception as exc:
-            logger.warning(
-                "Live yank query failed (%s), falling back to scanner labels",
-                exc,
-            )
-            yanked = _label_fallback(filenames)
-            source = "labels"
-
-    logger.debug(
-        "Yank lookup for %d files via %s: %d vulnerable",
-        len(filenames),
-        source,
-        len(yanked),
+    yanked = lookup_vulnerable(
+        filenames,
+        _live_lookup,
+        _label_fallback,
+        getattr(settings, "TRUSTIFY_URL", ""),
     )
 
     if not yanked:

@@ -8,11 +8,6 @@ from rest_framework.exceptions import ValidationError
 logger = logging.getLogger(__name__)
 
 
-def _normalize(name: str) -> str:
-    """PEP 503 package name normalization."""
-    return re.sub(r"[-_.]+", "-", str(name)).lower()
-
-
 _CVE_RE = re.compile(r"CVE-\d{4}-\d+")
 
 
@@ -21,11 +16,10 @@ def _extract_cve_ids(msg: str) -> list[str]:
 
 
 def _purl_from_content(instance) -> str | None:
-    """Build a PyPI PURL from PythonPackageContent fields."""
-    if not instance.name or not instance.version:
-        return None
-    name = _normalize(instance.name)
-    return f"pkg:pypi/{name}@{instance.version}"
+    """Build a PURL from content using the PURL registry."""
+    from pulp_trustify.purl import content_to_purl
+
+    return content_to_purl(instance)
 
 
 def upload_gate(sender, instance, **kwargs) -> None:
@@ -108,3 +102,26 @@ def connect_signal():
         dispatch_uid="trustify_upload_gate",
     )
     logger.info("Connected upload gate signal for PythonPackageContent")
+
+
+def connect_npm_signal():
+    """Connect upload gate to pulp_npm Package pre_save.
+
+    Gracefully handles missing pulp_npm.
+    """
+    try:
+        from pulp_npm.app.models import (  # type: ignore[import-not-found]
+            Package,
+        )
+    except ImportError:
+        logger.debug("pulp_npm not installed, NPM upload gate not connected")
+        return
+
+    from django.db.models.signals import pre_save
+
+    pre_save.connect(
+        upload_gate,
+        sender=Package,
+        dispatch_uid="trustify_npm_upload_gate",
+    )
+    logger.info("Connected upload gate signal for NPM Package")

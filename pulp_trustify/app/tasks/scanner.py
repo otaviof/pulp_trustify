@@ -3,6 +3,14 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
+from pulp_trustify.labels import (
+    LABEL_CVES,
+    LABEL_DETECTED_BY,
+    LABEL_SCANNED,
+    LABEL_SEVERITY,
+    LABEL_SOURCE_REPO,
+    LABEL_VULNERABLE,
+)
 from pulp_trustify.purl import content_to_purl
 from pulp_trustify.scanner import scan_content
 
@@ -24,12 +32,12 @@ def _label_content(results, content_qs, threshold, source_repo):
             continue
         content.pulp_labels.update(
             {
-                "trustify.vulnerable": "true",
-                "trustify.cves": " ".join(result.cve_ids),
-                "trustify.severity": threshold,
-                "trustify.detected_by": result.detection_mode,
-                "trustify.scanned": now,
-                "trustify.source_repo": source_repo,
+                LABEL_VULNERABLE: "true",
+                LABEL_CVES: " ".join(result.cve_ids),
+                LABEL_SEVERITY: threshold,
+                LABEL_DETECTED_BY: result.detection_mode,
+                LABEL_SCANNED: now,
+                LABEL_SOURCE_REPO: source_repo,
             }
         )
         content.save(update_fields=["pulp_labels"])

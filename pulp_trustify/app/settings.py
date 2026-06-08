@@ -48,6 +48,11 @@ TRUSTIFY_YANK_MAX_CVES
     Maximum number of CVE URLs to include in the yanked
     reason string shown by pip.  Each CVE is rendered as
     a clickable Trustify URL.
+TRUSTIFY_DEPRECATE_VULNERABLE
+    Inject NPM deprecation warnings in packument JSON
+    responses for vulnerable package versions.  Uses the
+    same dual-source lookup as yank (live Trustify API +
+    scanner label fallback).
 
 Scanner
 -------
@@ -120,6 +125,7 @@ TRUSTIFY_LOG_LEVEL = "INFO"
 TRUSTIFY_ENRICH_DETAILS = True
 TRUSTIFY_YANK_VULNERABLE = True
 TRUSTIFY_YANK_MAX_CVES = 3
+TRUSTIFY_DEPRECATE_VULNERABLE = True
 
 MIDDLEWARE = ["pulp_trustify.yank.YankMiddleware"]
 

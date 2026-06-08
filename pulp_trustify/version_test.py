@@ -6,6 +6,7 @@ from pulp_trustify.version import (
     VersionRange,
     extract_version_ranges,
     is_version_affected,
+    purl_full_name,
     purl_package_name,
     purl_version,
 )
@@ -65,6 +66,11 @@ def test_extract_version_ranges(description, expected):
         ("2.7.0", [VersionRange("1.22", None)], True),
         ("not.a.version", [VersionRange("1.0", "2.0")], False),
         ("1.5.0", [], False),
+        # Semver versions (not valid PEP 440, should use semver fallback)
+        ("1.0.0-alpha.1", [VersionRange("0.9.0", "2.0.0")], True),
+        ("1.0.0-rc.1", [VersionRange("1.0.0-alpha.1", "1.0.0")], True),
+        ("1.0.0+build.123", [VersionRange("0.9.0", "2.0.0")], True),
+        ("0.8.0", [VersionRange("0.9.0", "2.0.0")], False),
     ],
 )
 def test_is_version_affected(version_str, ranges, expected):
@@ -85,3 +91,19 @@ def test_is_version_affected(version_str, ranges, expected):
 def test_purl_parsing(purl, expected_name, expected_version):
     assert purl_package_name(purl) == expected_name
     assert purl_version(purl) == expected_version
+
+
+@pytest.mark.parametrize(
+    "purl,expected",
+    [
+        ("pkg:pypi/urllib3@2.6.2", "urllib3"),
+        ("pkg:npm/lodash@4.17.21", "lodash"),
+        ("pkg:npm/%40angular/core@17.0.0", "@angular/core"),
+        ("pkg:npm/%40types/node@20.10.0", "@types/node"),
+        ("pkg:pypi/foo@1.0?vcs_url=git", "foo"),
+        ("pkg:pypi/foo@1.0#sub/path", "foo"),
+        ("not-a-purl", None),
+    ],
+)
+def test_purl_full_name(purl: str, expected: str | None):
+    assert purl_full_name(purl) == expected

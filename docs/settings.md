@@ -48,6 +48,12 @@ The detection mode (analyze vs. search fallback) is auto-selected based on Trust
 | `TRUSTIFY_YANK_VULNERABLE` | `True` | Inject PEP 592 `data-yanked` into Simple API responses. Requires `TRUSTIFY_URL` for live queries; falls back to scanner labels without it. See [Yank Warnings](yank.md). |
 | `TRUSTIFY_YANK_MAX_CVES` | `3` | Maximum number of CVE URLs in the yanked reason string |
 
+## NPM Deprecation
+
+| Setting | Default | Description |
+|:--------|:--------|:------------|
+| `TRUSTIFY_DEPRECATE_VULNERABLE` | `True` | Inject `deprecated` fields in NPM packument responses for vulnerable versions. Requires `pulp_npm`. See [NPM Deprecation](deprecate.md). |
+
 ## Recommended Configuration
 
 Two operational profiles balance strictness vs. availability:

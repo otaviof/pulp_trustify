@@ -19,13 +19,19 @@ class PulpTrustifyPluginAppConfig(PulpPluginAppConfig):
         super().ready()
         from django.conf import settings
 
-        from pulp_trustify.upload import connect_signal
+        from pulp_trustify.deprecate import wrap_npm_content_handler
+        from pulp_trustify.upload import (
+            connect_npm_signal,
+            connect_signal,
+        )
 
         level = getattr(settings, "TRUSTIFY_LOG_LEVEL", "INFO")
         logging.getLogger("pulp_trustify").setLevel(
             getattr(logging, level.upper(), logging.INFO)
         )
         connect_signal()
+        connect_npm_signal()
+        wrap_npm_content_handler()
         self._connect_content_change_signal()
         self._register_scan_schedule(settings)
         logger.info("pulp_trustify ready (version '%s')", self.version)

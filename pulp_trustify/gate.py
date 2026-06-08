@@ -11,7 +11,7 @@ from pulp_trustify.policy import filter_vulnerabilities
 from pulp_trustify.version import (
     extract_version_ranges,
     is_version_affected,
-    purl_package_name,
+    purl_full_name,
     purl_version,
 )
 
@@ -212,7 +212,7 @@ def fallback_search(
     Extracts package name, searches Trustify, filters by
     version range match, then by severity threshold.
     """
-    pkg_name = purl_package_name(purl)
+    pkg_name = purl_full_name(purl)
     pkg_version = purl_version(purl)
     if pkg_name is None or pkg_version is None:
         return []

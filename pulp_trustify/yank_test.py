@@ -8,9 +8,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from pulp_trustify.labels import build_reason
 from pulp_trustify.yank import (
     YankMiddleware,
-    _build_yanked_reason,
     _href_to_filename,
     _inject_yanked_html,
     _inject_yanked_json,
@@ -96,18 +96,18 @@ _P = "Vulnerable package flagged by Trustify"
         ([], None),
     ],
 )
-def test_build_yanked_reason(cve_ids: list[str], expected: str | None):
-    result = _build_yanked_reason(cve_ids, TRUSTIFY_URL)
+def testbuild_reason(cve_ids: list[str], expected: str | None):
+    result = build_reason(cve_ids, TRUSTIFY_URL)
     assert result == expected
 
 
-def test_build_yanked_reason_with_trailing_slash():
-    result = _build_yanked_reason([CVE_1], f"{TRUSTIFY_URL}/")
+def testbuild_reason_with_trailing_slash():
+    result = build_reason([CVE_1], f"{TRUSTIFY_URL}/")
     assert result == f"{_P}: {URL_1}"
 
 
-def test_build_yanked_reason_max_cves_limits_output():
-    result = _build_yanked_reason(
+def testbuild_reason_max_cves_limits_output():
+    result = build_reason(
         [CVE_1, CVE_2, "CVE-2026-99999"],
         TRUSTIFY_URL,
         max_cves=2,
@@ -115,8 +115,8 @@ def test_build_yanked_reason_max_cves_limits_output():
     assert result == (f"{_P} (2 of 3 CVEs):\n- {URL_1}\n- {URL_2}")
 
 
-def test_build_yanked_reason_max_cves_single():
-    result = _build_yanked_reason([CVE_1, CVE_2], TRUSTIFY_URL, max_cves=1)
+def testbuild_reason_max_cves_single():
+    result = build_reason([CVE_1, CVE_2], TRUSTIFY_URL, max_cves=1)
     assert result == f"{_P} (1 of 2 CVEs): {URL_1}"
 
 

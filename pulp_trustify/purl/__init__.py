@@ -12,4 +12,5 @@ __all__ = [
     "url_to_purl",
 ]
 
+import pulp_trustify.purl.npm  # noqa: F401, E402
 import pulp_trustify.purl.pypi  # noqa: F401, E402

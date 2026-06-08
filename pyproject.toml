@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pulp_trustify"
-version = "0.0.1.dev"
+version = "0.1.0"
 description = "Pulp plugin integrating Trustify CVE intelligence for vulnerability-gated artifact serving"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -29,7 +29,12 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 # pulpcore is the Django-based plugin host framework
-dependencies = ["pulpcore>=3.105.0,<3.115", "requests", "packaging"]
+dependencies = [
+    "pulpcore>=3.105.0,<3.115",
+    "requests",
+    "packaging",
+    "semver>=3.0.0",
+]
 
 # dev extras: linting, testing, task runner
 [project.optional-dependencies]

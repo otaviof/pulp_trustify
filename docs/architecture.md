@@ -24,7 +24,8 @@ flowchart TD
 | [Download Guard](guard.md) | Per-request | Blocks download (403) | Single artifact |
 | [Upload Gate](upload-gate.md) | Per-upload | Rejects upload (400) | Single package |
 | [Scanner](scanner.md) | On-demand / periodic / event-driven | Label, quarantine, remove, advisory | Entire repository |
-| [Yank Warnings](yank.md) | Per-index-request | Injects PEP 592 `data-yanked` | Simple API response |
+| [Yank Warnings](yank.md) | Per-index-request | Injects PEP 592 `data-yanked` | PyPI Simple API response |
+| [NPM Deprecation](deprecate.md) | Per-packument-request | Injects `deprecated` field | NPM packument response |
 
 ### Temporal Coverage
 
@@ -46,8 +47,10 @@ The plugin uses a pluggable parser registry to convert URL paths or content obje
 
 - **`@register('pypi')`** — `parse_pypi_url(path)`: extracts PURL from download paths (wheels, sdists). Used by the download guard via `url_to_purl()`.
 - **`@register_content('pypi')`** — `parse_pypi_content(content)`: extracts PURL from content model fields (name, version). Used by the upload gate and scanner via `content_to_purl()`.
+- **`@register('npm')`** — `parse_npm_url(path)`: extracts PURL from NPM tarballs (`<name>/-/<name>-<version>.tgz`). Handles scoped packages (`@scope/pkg` encoded as `%40scope/pkg` in PURLs).
+- **`@register_content('npm')`** — `parse_npm_content(content)`: extracts PURL from `pulp_npm.app.models.Package` content objects.
 
-Currently supports PyPI packages only. Additional ecosystems can be added by decorating new parser functions.
+Currently supports PyPI and NPM packages. Additional ecosystems can be added by decorating new parser functions.
 
 ## Authentication
 

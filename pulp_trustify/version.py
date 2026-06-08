@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+import semver
 from packaging.version import InvalidVersion, Version
 
 
@@ -93,13 +94,34 @@ def is_version_affected(
 ) -> bool:
     """Check if a version falls within any of the given ranges.
 
-    Uses packaging.version.Version for PEP 440 comparison.
-    Returns False if version_str is not a valid PEP 440
-    version.
+    Tries PEP 440 comparison first, falls back to semver
+    if PEP 440 parsing fails.
     """
     try:
         version = Version(version_str)
     except InvalidVersion:
+        try:
+            semver_version = semver.Version.parse(version_str)
+        except ValueError:
+            return False
+
+        for r in ranges:
+            lower_ok = True
+            upper_ok = True
+            if r.introduced is not None:
+                try:
+                    introduced = semver.Version.parse(r.introduced)
+                    lower_ok = semver_version >= introduced
+                except ValueError:
+                    continue
+            if r.fixed is not None:
+                try:
+                    fixed = semver.Version.parse(r.fixed)
+                    upper_ok = semver_version < fixed
+                except ValueError:
+                    continue
+            if lower_ok and upper_ok:
+                return True
         return False
 
     for r in ranges:
@@ -131,6 +153,28 @@ def purl_package_name(purl: str) -> str | None:
     without_scheme = purl[4:]
     name_part = without_scheme.split("@")[0]
     return name_part.rsplit("/", 1)[-1]
+
+
+def purl_full_name(purl: str) -> str | None:
+    """Extract full package name from PURL, preserving scope.
+
+    'pkg:pypi/urllib3@2.6.2' -> 'urllib3'
+    'pkg:npm/%40angular/core@17.0.0' -> '@angular/core'
+    'pkg:npm/lodash@4.17.21' -> 'lodash'
+    """
+    if not purl.startswith("pkg:"):
+        return None
+    purl = purl.split("?", 1)[0]
+    purl = purl.split("#", 1)[0]
+    without_scheme = purl[4:]
+    slash_idx = without_scheme.find("/")
+    if slash_idx < 0:
+        return None
+    name_ver = without_scheme[slash_idx + 1 :]
+    decoded = name_ver.replace("%40", "@")
+    if "@" not in decoded:
+        return decoded
+    return decoded.rsplit("@", 1)[0]
 
 
 def purl_version(purl: str) -> str | None:

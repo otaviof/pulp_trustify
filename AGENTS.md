@@ -26,34 +26,27 @@ All AppConfig attributes (version, label, package name) come from `importlib.met
 
 ## Documentation
 
-Progressive disclosure — start broad, drill into specifics:
+Read broad to narrow. Start at the top, stop when you have enough context.
 
-1. **README.md** — project overview and quick start
-2. **docs/architecture.md** — protection layers, PURL extraction, authentication
-3. **docs/detection.md** — detection pipeline, analyze + search fallback, severity filtering
-4. **docs/\<feature\>.md** — per-feature deep-dives (guard, upload-gate, scanner, yank)
-5. **docs/settings.md** — full configuration reference and observability
-6. **docs/known-limitations.md** — all caveats and constraints
+| Doc | Scope |
+|-----|-------|
+| [README.md](README.md) | project overview, quick start |
+| [docs/architecture.md](docs/architecture.md) | protection layers, PURL extraction, auth |
+| [docs/detection.md](docs/detection.md) | detection pipeline, severity filtering, importers |
+| [docs/settings.md](docs/settings.md) | all Dynaconf settings, observability, debugging |
+| [docs/known-limitations.md](docs/known-limitations.md) | constraints, trade-offs, edge cases |
 
-When answering questions about a specific feature, read its dedicated doc first. For cross-cutting concerns (detection modes, severity threshold), read docs/detection.md. For "why doesn't X work" questions, check docs/known-limitations.md.
+**Feature deep-dives** — one doc per protection layer:
 
-Each doc has one job — create links, don't repeat:
+| Doc | Feature |
+|-----|---------|
+| [docs/guard.md](docs/guard.md) | download guard (ContentGuard) |
+| [docs/upload-gate.md](docs/upload-gate.md) | upload gate (pre_save signal) |
+| [docs/scanner.md](docs/scanner.md) | scanner task, quarantine, advisories |
+| [docs/yank.md](docs/yank.md) | PEP 592 yank middleware |
+| [docs/deprecate.md](docs/deprecate.md) | NPM deprecation (content_handler patch) |
 
-- [README.md](README.md): overview, architecture diagram, quick start
-- [CONTRIBUTING.md](CONTRIBUTING.md): dev setup, poe tasks, code style, testing
-- [deploy/README.md](deploy/README.md): deployment, env vars, script flags
-- [docs/architecture.md](docs/architecture.md): protection layers, PURL extraction, authentication
-- [docs/detection.md](docs/detection.md): detection pipeline, severity filtering, importer requirements
-- [docs/guard.md](docs/guard.md): download guard (ContentGuard)
-- [docs/upload-gate.md](docs/upload-gate.md): upload gate (pre_save signal)
-- [docs/scanner.md](docs/scanner.md): scanner task, actions, quarantine, advisories
-- [docs/yank.md](docs/yank.md): PEP 592 yank middleware
-- [docs/settings.md](docs/settings.md): all Dynaconf settings, observability, debugging
-- [docs/known-limitations.md](docs/known-limitations.md): constraints, trade-offs, edge cases
-
-## Deployment
-
-See [deploy/README.md](deploy/README.md).
+**Operations:** [CONTRIBUTING.md](CONTRIBUTING.md) · [deploy/README.md](deploy/README.md)
 
 ## Rules
 

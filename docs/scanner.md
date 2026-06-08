@@ -66,7 +66,7 @@ Periodic and event-driven can be enabled together, they serve different purposes
 
 1. Scan is triggered manually via REST API, automatically via schedule, or by content change signal
 2. Task enumerates all content in the repository's latest version
-3. Builds PURLs from content metadata (name/version fields)
+3. Builds PURLs from content metadata using `content_to_purl()` from the PURL registry (ecosystem-agnostic — NPM packages are automatically included when `pulp_npm` is installed)
 4. Queries Trustify in batches (`TRUSTIFY_BATCH_SIZE`, default: 100)
 5. Uses analyze mode first, falls back to search for packages without OSV data
 6. Applies configurable actions: label, quarantine, remove, record advisory
@@ -122,12 +122,16 @@ The `trustify.source_repo` label records which repository the vulnerability was 
 
 ### Quarantine
 
-Copies vulnerable content to typed repositories before removal. Set `TRUSTIFY_SCAN_QUARANTINE_REPO` to a name prefix (e.g., `"quarantine"`). The scanner creates one quarantine repository per plugin type, matching the source repository type. For example, prefix `"quarantine"` creates `"quarantine-python"` for Python repos.
+Copies vulnerable content to typed repositories before removal. Set `TRUSTIFY_SCAN_QUARANTINE_REPO` to a name prefix (e.g., `"quarantine"`). The scanner creates one quarantine repository per plugin type, matching the source repository type. For example, prefix `"quarantine"` creates `"quarantine-python"` for Python repos and `"quarantine-npm"` for NPM repos.
 
 ```bash
 # List quarantined Python content
 pulp python repository content list \
   --repository quarantine-python
+
+# List quarantined NPM content
+pulp npm repository content list \
+  --repository quarantine-npm
 
 # Move a package back to the original repository
 pulp python repository content add \
