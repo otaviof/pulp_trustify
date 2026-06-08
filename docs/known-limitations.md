@@ -50,3 +50,9 @@ For Trustify's own limitations on vulnerability correlation, see the [Trustify V
 - **Scoped package encoding.** Scoped packages (e.g., `@scope/pkg`) are encoded as `%40scope/pkg` in PURLs. The wrapper handles this encoding when constructing PURLs for live queries, but edge cases in client encoding may not match Trustify's PURL normalization.
 - **Live query with label fallback.** Like yank warnings, NPM deprecation queries Trustify live for each packument request. If Trustify is unreachable, falls back to scanner labels. If neither is available, deprecated fields are silently omitted.
 - **Per-packument-request latency.** Each packument request (e.g., `npm view <pkg>`) triggers a Trustify `/analyze` call with all package versions in the packument. For packages with many versions, this adds latency proportional to the number of versions.
+
+## NPM Audit
+
+- **Scoped package fallback.** `fallback_search()` uses `purl_package_name()` which strips scope from scoped packages (`@angular/core` → `core`). The audit endpoint skips `fallback_search` for scoped PURLs (`%40` in PURL) and relies solely on the Trustify analyze API. Scoped packages not indexed by Trustify's analyze may not report vulnerabilities.
+- **Exact version matching only.** `vulnerable_versions` uses `"=X.Y.Z"` (exact match). npm matches this against lockfile entries. Richer range data (e.g., `>=1.0.0 <2.0.0`) would require parsing advisory descriptions, which is expensive at audit scale.
+- **Synchronous execution.** Unlike the scanner (async task), the audit endpoint runs synchronously. Large audit payloads with many packages may time out on slow Trustify connections.

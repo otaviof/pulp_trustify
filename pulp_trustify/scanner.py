@@ -62,7 +62,7 @@ def scan_content(
             len(batch),
         )
 
-        vuln_map, analyzed_purls = _analyze_batch(
+        vuln_map, analyzed_purls = analyze_batch(
             client,
             batch_purls,
             threshold,
@@ -118,7 +118,7 @@ def scan_content(
     return results
 
 
-def _analyze_batch(
+def analyze_batch(
     client: VulnerabilityChecker,
     purls: list[str],
     threshold: str,

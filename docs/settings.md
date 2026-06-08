@@ -54,6 +54,7 @@ The detection mode (analyze vs. search fallback) is auto-selected based on Trust
 |:--------|:--------|:------------|
 | `TRUSTIFY_DEPRECATE_VULNERABLE` | `True` | Inject `deprecated` fields in NPM packument responses for vulnerable versions. Requires `pulp_npm`. See [NPM Deprecation](deprecate.md). |
 | `TRUSTIFY_NPM_BLOCK_DOWNLOADS` | `False` | Remove vulnerable version entries from NPM packument responses. npm cannot resolve or install filtered versions. Default `False` — deprecation warnings with Trustify URLs are shown instead. **Do not attach a `TrustifyGuard` to NPM distributions** — npm suppresses deprecation warnings when the tarball download is blocked, hiding the Trustify URLs. The guard is designed for PyPI distributions where yank warnings display before the download. See [Version Filtering](deprecate.md#version-filtering). |
+| `TRUSTIFY_NPM_AUDIT_ENABLED` | `True` | Enable the `POST /pulp/api/v3/trustify/-/npm/v1/security/advisories/bulk` endpoint for `npm audit`. Returns empty `{}` when disabled. See [NPM Audit](npm-audit.md). |
 
 ## Recommended Configuration
 

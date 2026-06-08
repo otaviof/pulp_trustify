@@ -11,12 +11,14 @@ flowchart TD
         B["Upload Gate<br/>(upload-time blocking)"]
         C["Scanner<br/>(periodic & event-driven)"]
         D2["Yank Warnings<br/>(PEP 592 Simple API)"]
+        E["NPM Audit<br/>(npm audit endpoint)"]
     end
 
     A --> I["Shared Detection Core<br/>gate.py → check_purl()"]
     B --> I
     C --> I
     D2 --> I
+    E --> I
 ```
 
 | Layer | Timing | Action | Scope |
@@ -26,6 +28,7 @@ flowchart TD
 | [Scanner](scanner.md) | On-demand / periodic / event-driven | Label, quarantine, remove, advisory | Entire repository |
 | [Yank Warnings](yank.md) | Per-index-request | Injects PEP 592 `data-yanked` | PyPI Simple API response |
 | [NPM Deprecation](deprecate.md) | Per-packument-request | Injects `deprecated` field | NPM packument response |
+| [NPM Audit](npm-audit.md) | Per-audit-request | Returns advisories (npm format) | npm audit response |
 
 ### Temporal Coverage
 
@@ -38,6 +41,7 @@ Each protection layer checks Trustify at a different point in the artifact lifec
 | Event-Driven Scanner | Post-sync (async) | Same as gate | Selective removal |
 | Periodic Scanner | Scheduled interval | As recent as last run | Selective removal |
 | Yank Warnings | Index request time | Real-time | Advisory only |
+| NPM Audit | Audit request time | Real-time | Advisory data (npm format) |
 
 The upload gate and event-driven scanner query the same Trustify data at approximately the same time, but they serve different operational modes. The gate provides all-or-nothing sync blocking (strict — no vulnerable content enters, but the entire sync fails if any package is vulnerable). Event-driven scanning provides selective remediation (permissive — syncs always succeed, vulnerable content is removed post-sync). Operators choose based on their tolerance for sync failures vs. temporary exposure windows covered by the download guard.
 
