@@ -34,9 +34,9 @@ def _npm_live_lookup(
     from pulp_trustify.app.models import _get_client
     from pulp_trustify.gate import check_purls
 
-    base_url = getattr(settings, "TRUSTIFY_URL", "")
-    max_cves = getattr(settings, "TRUSTIFY_YANK_MAX_CVES", 3)
-    threshold = getattr(settings, "TRUSTIFY_SEVERITY_THRESHOLD", "critical")
+    base_url = settings.TRUSTIFY_URL
+    max_cves = settings.TRUSTIFY_YANK_MAX_CVES
+    threshold = settings.TRUSTIFY_SEVERITY_THRESHOLD
 
     purls: list[str] = []
     version_to_purl: dict[str, str] = {}
@@ -84,16 +84,55 @@ def _npm_label_fallback(
         version__in=versions,
     ).values_list("version", "pulp_labels")
 
-    base_url = getattr(settings, "TRUSTIFY_URL", "")
-    max_cves = getattr(settings, "TRUSTIFY_YANK_MAX_CVES", 3)
+    base_url = settings.TRUSTIFY_URL
+    max_cves = settings.TRUSTIFY_YANK_MAX_CVES
 
     return labels_to_reasons(qs, base_url, max_cves)
 
 
-def _inject_deprecated(body: bytes, package_name: str) -> bytes | None:
-    """Inject deprecated fields into packument versions.
+def _parse_semver(ver: str) -> tuple[int, ...]:
+    """Best-effort semver parse for sorting."""
+    try:
+        parts = ver.split("-")[0].split(".")
+        return tuple(int(p) for p in parts)
+    except (ValueError, AttributeError):
+        return (0,)
 
-    Returns modified JSON bytes, or None if no modifications made.
+
+def _retarget_dist_tags(
+    data: dict,
+    remaining_versions: dict,
+) -> None:
+    """Update dist-tags to point to remaining versions."""
+    dist_tags = data.get("dist-tags", {})
+    if not dist_tags:
+        return
+    sorted_versions = sorted(
+        remaining_versions.keys(),
+        key=_parse_semver,
+        reverse=True,
+    )
+    for tag, ver in list(dist_tags.items()):
+        if ver not in remaining_versions:
+            if sorted_versions:
+                dist_tags[tag] = sorted_versions[0]
+            else:
+                del dist_tags[tag]
+
+
+def _modify_packument(
+    body: bytes,
+    package_name: str,
+    block_downloads: bool = False,
+) -> bytes | None:
+    """Modify packument for vulnerable versions.
+
+    When block_downloads is False, injects deprecated fields.
+    When True, removes vulnerable versions from the packument
+    and re-targets dist-tags.  Falls back to deprecation when
+    all versions are vulnerable to avoid empty packuments.
+
+    Returns modified JSON bytes, or None if no changes needed.
     """
     from django.conf import settings
 
@@ -119,15 +158,25 @@ def _inject_deprecated(body: bytes, package_name: str) -> bytes | None:
         version_keys,
         live_fn,
         fallback_fn,
-        getattr(settings, "TRUSTIFY_URL", ""),
+        settings.TRUSTIFY_URL,
     )
 
     if not vulnerable:
         return None
 
-    for ver, reason in vulnerable.items():
-        if ver in versions:
-            versions[ver]["deprecated"] = reason
+    if block_downloads:
+        if set(vulnerable) >= set(version_keys):
+            for ver, reason in vulnerable.items():
+                if ver in versions:
+                    versions[ver]["deprecated"] = reason
+        else:
+            for ver in vulnerable:
+                versions.pop(ver, None)
+            _retarget_dist_tags(data, versions)
+    else:
+        for ver, reason in vulnerable.items():
+            if ver in versions:
+                versions[ver]["deprecated"] = reason
 
     return json.dumps(data, separators=(",", ":")).encode("utf-8")
 
@@ -135,13 +184,16 @@ def _inject_deprecated(body: bytes, package_name: str) -> bytes | None:
 def wrap_npm_content_handler() -> None:
     """Install monkey-patch wrapper on NpmDistribution.content_handler.
 
-    Wrapper intercepts packument responses and injects deprecated
-    fields for vulnerable versions.
+    Wrapper intercepts packument responses and modifies them
+    based on settings: deprecation warnings, version filtering,
+    or both.
     """
     from django.conf import settings
 
-    if not getattr(settings, "TRUSTIFY_DEPRECATE_VULNERABLE", True):
-        logger.debug("NPM deprecation disabled")
+    deprecate = settings.TRUSTIFY_DEPRECATE_VULNERABLE
+    block = settings.TRUSTIFY_NPM_BLOCK_DOWNLOADS
+    if not deprecate and not block:
+        logger.debug("NPM deprecation and blocking disabled")
         return
 
     try:
@@ -162,7 +214,6 @@ def wrap_npm_content_handler() -> None:
             raw_body = response.body
             if not raw_body:
                 return response
-            # Payload has no sync public bytes accessor
             if hasattr(raw_body, "_value"):
                 body = raw_body._value
             else:
@@ -171,7 +222,6 @@ def wrap_npm_content_handler() -> None:
                 return response
 
             content_type = getattr(response, "content_type", "")
-            # pulp_npm serves packuments as text/plain
             is_json = (
                 "application/json" in content_type or "text/plain" in content_type
             )
@@ -185,7 +235,8 @@ def wrap_npm_content_handler() -> None:
             elif segs:
                 pkg_name = segs[-1]
 
-            result = _inject_deprecated(body, pkg_name)
+            block_dl = settings.TRUSTIFY_NPM_BLOCK_DOWNLOADS
+            result = _modify_packument(body, pkg_name, block_downloads=block_dl)
             if result is None:
                 return response
 
@@ -204,4 +255,4 @@ def wrap_npm_content_handler() -> None:
             return response
 
     NpmDistribution.content_handler = _wrapped_content_handler
-    logger.info("Installed NPM deprecation wrapper")
+    logger.info("Installed NPM packument wrapper")

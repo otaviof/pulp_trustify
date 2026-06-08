@@ -28,7 +28,7 @@ sequenceDiagram
     end
 ```
 
-Requests for files that no PURL parser recognizes (e.g., `.rpm`, `.deb`, metadata files) are **silently allowed** — the guard only protects formats with a registered parser. Currently that means PyPI wheels and `sdists`.
+Requests for files that no PURL parser recognizes (e.g., `.rpm`, `.deb`, metadata files) are **silently allowed** — the guard only protects formats with a registered parser. Currently that means PyPI wheels, PyPI source distributions (`sdists`), and NPM tarballs (`.tgz`).
 
 For the detection logic internals, see [Detection Pipeline](detection.md).
 
@@ -45,13 +45,15 @@ curl -X POST https://pulp.example.com/api/v3/contentguards/trustify/guard/ \
   -d '{"name": "trustify-guard"}'
 ```
 
-### Attach to a Distribution
+### Attach to a Distribution (PyPI only)
 
 ```bash
 pulp python distribution update \
   --name local-pypi \
   --content-guard /api/v3/contentguards/trustify/guard/<guard-uuid>/
 ```
+
+> **Do not attach a guard to NPM distributions.** npm suppresses deprecation warnings when the tarball download is blocked by a guard — the developer sees a generic `403 Forbidden` with no Trustify URL. For NPM, rely on [deprecation warnings](deprecate.md) instead, which show actionable Trustify URLs in `npm install` output. The guard is designed for PyPI, where pip shows [yank warnings](yank.md) before attempting the download.
 
 ## Verify
 
@@ -68,6 +70,8 @@ curl -o /dev/null -w "%{http_code}" \
 ## What the User Sees
 
 When both [Yank Warnings](yank.md) and the download guard are active, pip first shows a yank warning with CVE details, then hits the 403 on download. See [Yank Interaction with Download Guard](yank.md#interaction-with-download-guard) for the full two-phase flow.
+
+The guard's 403 response body includes Trustify URLs (visible via `curl`), but **npm does not display the response body** — it shows a generic `403 Forbidden`. This is why the guard should not be attached to NPM distributions: the deprecation warning (shown at the packument level) is the only way to surface Trustify URLs to npm users. See [NPM Deprecation](deprecate.md) for the recommended NPM protection strategy.
 
 The enriched details appear in the content app logs (`kubectl logs deployment/pulp-content`):
 

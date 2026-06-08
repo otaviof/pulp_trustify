@@ -469,3 +469,65 @@ def test_check_purls_empty_input():
     )
 
     assert result == {}
+
+
+def test_gate_purl_error_message_includes_url():
+    """Error message includes Trustify URL when base_url is set."""
+    response = {
+        "items": [
+            {
+                "purl": "pkg:pypi/requests@2.28.0",
+                "details": [
+                    {
+                        "entry": {"cve": "CVE-2023-1234"},
+                        "base_score": {"severity": "critical"},
+                    }
+                ],
+            }
+        ],
+    }
+    client = _FakeClient(response=response)
+
+    with pytest.raises(PermissionError) as exc_info:
+        gate_purl(
+            client=client,
+            purl="pkg:pypi/requests@2.28.0",
+            threshold="critical",
+            fail_open=False,
+            base_url=BASE_URL,
+        )
+
+    error_msg = str(exc_info.value)
+    assert f"{BASE_URL}/vulnerabilities/CVE-2023-1234" in error_msg
+    assert "\n" not in error_msg
+
+
+def test_gate_purl_error_message_no_base_url():
+    """Falls back to simple format when base_url is empty."""
+    response = {
+        "items": [
+            {
+                "purl": "pkg:pypi/requests@2.28.0",
+                "details": [
+                    {
+                        "entry": {"cve": "CVE-2023-1234"},
+                        "base_score": {"severity": "critical"},
+                    }
+                ],
+            }
+        ],
+    }
+    client = _FakeClient(response=response)
+
+    with pytest.raises(PermissionError) as exc_info:
+        gate_purl(
+            client=client,
+            purl="pkg:pypi/requests@2.28.0",
+            threshold="critical",
+            fail_open=False,
+            base_url="",
+        )
+
+    error_msg = str(exc_info.value)
+    assert "Blocked due to CVE: CVE-2023-1234" in error_msg
+    assert "vulnerabilities" not in error_msg

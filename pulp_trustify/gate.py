@@ -7,6 +7,7 @@ from pulp_trustify.client.client import (
     VulnerabilityChecker,
     build_trustify_url,
 )
+from pulp_trustify.labels import build_reason_inline
 from pulp_trustify.policy import filter_vulnerabilities
 from pulp_trustify.version import (
     extract_version_ranges,
@@ -181,7 +182,8 @@ def gate_purl(
     """
     cve_ids = check_purl(client, purl, threshold, fail_open)
     if cve_ids:
-        msg = f"{MSG_BLOCKED_CVE}: {', '.join(cve_ids)}"
+        reason = build_reason_inline(cve_ids, base_url) if base_url else None
+        msg = reason or f"{MSG_BLOCKED_CVE}: {', '.join(cve_ids)}"
         if base_url:
             urls = "\n  ".join(
                 build_trustify_url(base_url, cve) for cve in cve_ids

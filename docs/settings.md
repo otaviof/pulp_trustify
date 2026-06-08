@@ -48,11 +48,12 @@ The detection mode (analyze vs. search fallback) is auto-selected based on Trust
 | `TRUSTIFY_YANK_VULNERABLE` | `True` | Inject PEP 592 `data-yanked` into Simple API responses. Requires `TRUSTIFY_URL` for live queries; falls back to scanner labels without it. See [Yank Warnings](yank.md). |
 | `TRUSTIFY_YANK_MAX_CVES` | `3` | Maximum number of CVE URLs in the yanked reason string |
 
-## NPM Deprecation
+## NPM Protection
 
 | Setting | Default | Description |
 |:--------|:--------|:------------|
 | `TRUSTIFY_DEPRECATE_VULNERABLE` | `True` | Inject `deprecated` fields in NPM packument responses for vulnerable versions. Requires `pulp_npm`. See [NPM Deprecation](deprecate.md). |
+| `TRUSTIFY_NPM_BLOCK_DOWNLOADS` | `False` | Remove vulnerable version entries from NPM packument responses. npm cannot resolve or install filtered versions. Default `False` — deprecation warnings with Trustify URLs are shown instead. **Do not attach a `TrustifyGuard` to NPM distributions** — npm suppresses deprecation warnings when the tarball download is blocked, hiding the Trustify URLs. The guard is designed for PyPI distributions where yank warnings display before the download. See [Version Filtering](deprecate.md#version-filtering). |
 
 ## Recommended Configuration
 

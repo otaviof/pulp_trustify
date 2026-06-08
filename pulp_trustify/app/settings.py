@@ -53,6 +53,18 @@ TRUSTIFY_DEPRECATE_VULNERABLE
     responses for vulnerable package versions.  Uses the
     same dual-source lookup as yank (live Trustify API +
     scanner label fallback).
+TRUSTIFY_NPM_BLOCK_DOWNLOADS
+    When ``True``, remove vulnerable version entries
+    from NPM packument responses.  npm clients will
+    not be able to resolve or install filtered versions.
+    Default ``False`` — versions are shown with
+    deprecation warnings (Trustify URLs visible in
+    ``npm install`` output).  Note: do NOT attach a
+    ``TrustifyGuard`` to NPM distributions — npm
+    suppresses deprecation warnings when the download
+    is blocked by a guard, hiding the Trustify URLs.
+    Use the guard only for PyPI distributions where
+    yank warnings are shown before the download.
 
 Scanner
 -------
@@ -126,6 +138,7 @@ TRUSTIFY_ENRICH_DETAILS = True
 TRUSTIFY_YANK_VULNERABLE = True
 TRUSTIFY_YANK_MAX_CVES = 3
 TRUSTIFY_DEPRECATE_VULNERABLE = True
+TRUSTIFY_NPM_BLOCK_DOWNLOADS = False
 
 MIDDLEWARE = ["pulp_trustify.yank.YankMiddleware"]
 

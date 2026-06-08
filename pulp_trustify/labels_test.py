@@ -7,6 +7,7 @@ import pytest
 from pulp_trustify.labels import (
     REASON_PREFIX,
     build_reason,
+    build_reason_inline,
     labels_to_reasons,
     lookup_vulnerable,
 )
@@ -102,8 +103,8 @@ def test_labels_to_reasons_empty_labels_skipped():
 
 def test_labels_to_reasons_none_labels_skipped():
     """Rows with None labels are skipped."""
-    rows = [
-        ("file1.whl", None),
+    rows: list[tuple[str, dict]] = [
+        ("file1.whl", None),  # type: ignore[list-item]
     ]
     result = labels_to_reasons(rows, TRUSTIFY_URL, max_cves=3)
     assert result == {}
@@ -171,3 +172,28 @@ def test_lookup_vulnerable_live_fails_fallback():
     assert result == {"id1": "reason1"}
     live_fn.assert_called_once_with(["id1", "id2"])
     fallback_fn.assert_called_once_with(["id1", "id2"])
+
+
+def test_build_reason_inline_single_cve():
+    """Single CVE returns single-line format."""
+    result = build_reason_inline([CVE_1], TRUSTIFY_URL)
+    assert result == f"{REASON_PREFIX}: {URL_1}"
+
+
+def test_build_reason_inline_multiple_cves():
+    """Two CVEs returns comma-separated format."""
+    result = build_reason_inline([CVE_1, CVE_2], TRUSTIFY_URL)
+    assert result == f"{REASON_PREFIX}: {URL_1}, {URL_2}"
+
+
+def test_build_reason_inline_overflow():
+    """3 CVEs with max_cves=2 shows 2 URLs plus overflow marker."""
+    result = build_reason_inline([CVE_1, CVE_2, CVE_3], TRUSTIFY_URL, max_cves=2)
+    expected = f"{REASON_PREFIX}: {URL_1}, {URL_2} (+1 more)"
+    assert result == expected
+
+
+def test_build_reason_inline_empty():
+    """Empty list returns None."""
+    result = build_reason_inline([], TRUSTIFY_URL)
+    assert result is None

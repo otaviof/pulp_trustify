@@ -47,6 +47,82 @@ NPM's registry protocol includes a `deprecated` field in packument version objec
 
 `pulp_trustify` uses this mechanism to surface vulnerability information directly in the package manager workflow. The scanner labels vulnerable packages, and the wrapper translates those labels into `deprecated` fields with Trustify CVE URLs as the reason.
 
+## Version Filtering
+
+When `TRUSTIFY_NPM_BLOCK_DOWNLOADS` is enabled (default: `False`), the packument wrapper removes vulnerable version entries from the JSON response instead of merely marking them deprecated. This makes npm treat filtered versions as non-existent — they cannot be resolved or installed.
+
+> **Why disabled by default:** npm only shows deprecation warnings for packages that successfully download. When a `TrustifyGuard` blocks the tarball with 403, npm aborts before displaying the warning — the developer sees a generic `403 Forbidden` with no Trustify URL. With version filtering disabled and no guard, npm shows `npm warn deprecated pkg@ver: Vulnerable package flagged by Trustify: <url>`, giving developers actionable context. **Do not attach a `TrustifyGuard` to NPM distributions** — use it only for PyPI, where yank warnings display before the download.
+
+```mermaid
+sequenceDiagram
+    participant C as npm Client
+    participant A as Content App
+    participant W as Wrapper (_wrapped_content_handler)
+    participant T as Trustify API
+
+    C->>A: GET /pulp/content/<dist>/<pkg>
+    A->>W: content_handler (wrapped)
+    W->>T: POST /analyze (batch PURLs for all versions)
+    T-->>W: vulnerability results
+    alt BLOCK mode (TRUSTIFY_NPM_BLOCK_DOWNLOADS=True)
+        W->>W: Remove vulnerable versions from packument
+        W->>W: Re-target dist-tags to latest safe version
+        W-->>A: Packument with versions removed
+        A-->>C: Response
+        C->>C: npm ERR! code ETARGET
+        C->>C: npm ERR! notarget No matching version found
+    else WARN mode (TRUSTIFY_NPM_BLOCK_DOWNLOADS=False)
+        W->>W: Inject deprecated fields
+        W-->>A: Packument with deprecated metadata
+        A-->>C: Response
+        C->>C: npm warn deprecated <pkg>@<version>: <reason>
+    end
+```
+
+### Fallback Behavior
+
+When **all** versions of a package are vulnerable, version filtering falls back to deprecation mode to avoid serving an empty packument. This ensures the registry remains functional while still warning users about the risk. In this scenario, enable the download guard to enforce blocking at the tarball download stage.
+
+### dist-tag Retargeting
+
+NPM uses `dist-tags` (e.g., `latest`, `next`) as symbolic pointers to specific versions. When version filtering removes the version a tag points to, the wrapper re-targets the tag to the highest remaining safe version (semver sorted). If no safe versions remain, the tag is removed from the packument.
+
+Example: If `lodash@4.17.21` is tagged as `latest` but is vulnerable, and `4.17.20` is safe, the wrapper re-targets `latest` to `4.17.20`.
+
+### Configuration Matrix
+
+| DEPRECATE | BLOCK | Guard | Behavior |
+|:----------|:------|:------|:---------|
+| `True` | `False` | No | **Warn (default, recommended)** — deprecation warnings with Trustify URLs shown, packages install with advisory |
+| `True` | `True` | No | Warn + filter — vulnerable versions hidden from resolution, all-vulnerable fallback shows deprecation warning |
+| `True` | `False` | Yes | Warn suppressed — guard blocks tarball download, but npm hides the deprecation warning (poor UX) |
+| `True` | `True` | Yes | Strict block — vulnerable versions hidden, guard blocks direct tarball, but no Trustify URL visible to npm |
+
+The recommended configuration for NPM is `DEPRECATE=True`, `BLOCK=False`, **no guard**. This ensures developers see Trustify URLs in `npm install` output. The guard is designed for PyPI distributions where pip shows yank warnings before attempting the download.
+
+### Expected npm Output
+
+When version filtering blocks a version:
+
+```
+$ npm install lodash@4.17.21
+npm ERR! code ETARGET
+npm ERR! notarget No matching version found for lodash@4.17.21.
+npm ERR! notarget In most cases you or one of your dependencies are requesting
+npm ERR! notarget a package version that doesn't exist.
+```
+
+When all versions are vulnerable (fallback to deprecation):
+
+```
+$ npm install lodash@4.17.21
+npm warn deprecated lodash@4.17.21: Vulnerable package flagged by Trustify: https://trustify.example.com/vulnerabilities/CVE-2024-1234
+```
+
+### Defense-in-Depth
+
+Version filtering operates at the packument metadata level. Clients that bypass packument resolution and request tarball URLs directly (e.g., `curl https://pulp.example.com/.../lodash-4.17.21.tgz`) will not encounter version filtering. Attach a `TrustifyGuard` to distributions to block direct tarball downloads. See [Download Guard](guard.md).
+
 ## npm CLI
 
 ```

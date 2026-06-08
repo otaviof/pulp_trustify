@@ -55,6 +55,24 @@ def build_reason(
     return f"{REASON_PREFIX}{count}:\n{lines}"
 
 
+def build_reason_inline(
+    cve_ids: list[str],
+    base_url: str,
+    max_cves: int = 3,
+) -> str | None:
+    """Single-line reason string for HTTP error messages."""
+    if not cve_ids:
+        return None
+    shown = cve_ids[: max(max_cves, 1)]
+    urls = [build_trustify_url(base_url, c) for c in shown]
+    overflow = (
+        f" (+{len(cve_ids) - len(shown)} more)"
+        if len(cve_ids) > len(shown)
+        else ""
+    )
+    return f"{REASON_PREFIX}: {', '.join(urls)}{overflow}"
+
+
 def labels_to_reasons(
     label_rows: Iterable[tuple[str, dict[str, Any]]],
     base_url: str,
