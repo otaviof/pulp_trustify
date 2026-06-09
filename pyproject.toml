@@ -38,7 +38,7 @@ dependencies = [
 
 # dev extras: linting, testing, task runner
 [project.optional-dependencies]
-dev = ["ruff", "pytest", "poethepoet"]
+dev = ["ruff", "pytest", "poethepoet", "towncrier>=24.8.0"]
 
 # pulpcore discovers plugins via this entry point; the value resolves to the
 # PulpTrustifyPluginAppConfig class path stored in pulp_trustify.__init__
@@ -194,3 +194,42 @@ help = "full two-phase E2E pipeline (requires Docker/Podman compose)"
 [tool.poe.tasks.version]
 help = "print the project version from pyproject.toml"
 cmd = "python -c \"import tomllib, pathlib; print(tomllib.load(pathlib.Path('pyproject.toml').open('rb'))['project']['version'])\""
+
+[tool.poe.tasks.changelog-draft]
+help = "preview the next changelog entry from fragments"
+cmd = "towncrier build --draft"
+
+[tool.poe.tasks.changelog]
+help = "compile changelog fragments into CHANGELOG.md"
+cmd = "towncrier build --yes"
+
+#
+# Towncrier — changelog fragment management
+#
+
+[tool.towncrier]
+package = "pulp_trustify"
+directory = "changes"
+filename = "CHANGELOG.md"
+start_string = "<!-- towncrier -->\n"
+underlines = ["", "", ""]
+title_format = "## [{version}] - {project_date}"
+issue_format = "[#{issue}](https://github.com/otaviof/pulp_trustify/issues/{issue})"
+
+[[tool.towncrier.type]]
+name = "Added"
+
+[[tool.towncrier.type]]
+name = "Changed"
+
+[[tool.towncrier.type]]
+name = "Fixed"
+
+[[tool.towncrier.type]]
+name = "Removed"
+
+[[tool.towncrier.type]]
+name = "Security"
+
+[[tool.towncrier.type]]
+name = "Deprecated"

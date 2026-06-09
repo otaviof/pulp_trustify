@@ -56,4 +56,5 @@ Read broad to narrow. Start at the top, stop when you have enough context.
 - **Line length**: 82 (Python code only, not markdown).
 - **Comments**: only when the *why* is non-obvious.
 - **Versioning**: bump the version in `pyproject.toml` on every project change, following [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`). Drop the `.dev` suffix on first real release.
+- **Changelog**: every user-visible change needs a fragment in `changes/`. Name: `+slug.type.md` (e.g., `+gate-advisory.added.md`). Types: `added`, `changed`, `fixed`, `removed`, `security`, `deprecated`. Content: one sentence describing the change. Run `poe changelog-draft` to preview.
 - **Task runner**: `poe`, not raw tool commands. Run `poe check` before submitting.
