@@ -203,6 +203,10 @@ cmd = "towncrier build --draft"
 help = "compile changelog fragments into CHANGELOG.md"
 cmd = "towncrier build --yes"
 
+[tool.poe.tasks.release]
+help = "validate, tag, push, and create GitHub release"
+shell = "VERSION=$(poe -q version) python hack/release.py"
+
 #
 # Towncrier — changelog fragment management
 #

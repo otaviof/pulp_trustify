@@ -38,6 +38,7 @@ All project tasks are managed via [Poe the Poet](https://poethepoet.naez.com/):
 | Image tag | `poe image-tag` | Tag image with project version |
 | Image push | `poe image-push` | Push image to the dev registry |
 | Deploy | `poe deploy` | Deploy to Kubernetes (see [deploy/README.md](deploy/README.md)) |
+| Release | `poe release` | Validate, tag, push, and create GitHub release |
 | Version | `poe version` | Print project version |
 
 ## Before Submitting
@@ -103,3 +104,31 @@ GitHub Actions runs lint, test, build, E2E, and publish on every push to `main` 
 ## Deployment
 
 See [deploy/README.md](deploy/README.md).
+
+## Releasing
+
+The release workflow is automated via `poe release`, which delegates to `hack/release.py`. The script validates the working directory, version, and changelog, then creates a git tag and GitHub release. The tag push triggers the CI pipeline to build and publish the container image.
+
+Before releasing:
+
+1. Ensure `main` is up to date: `git pull origin main`
+2. Verify the version in `pyproject.toml` is correct
+3. Run checks: `poe check`
+4. Compile the changelog: `poe changelog`
+5. Commit: `git add CHANGELOG.md changes/ && git commit -m "release(vX.Y.Z): compile changelog"`
+
+To release:
+
+```bash
+poe release
+```
+
+Or dry-run first:
+
+```bash
+VERSION=$(poe -q version) python hack/release.py --dry-run
+```
+
+After release, verify the GitHub release appears at https://github.com/otaviof/pulp_trustify/releases and the container image is pushed to `ghcr.io/otaviof/pulp_trustify:<version>`.
+
+For details on what the script does, run `python hack/release.py --help` or read the source at `hack/release.py`.
