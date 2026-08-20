@@ -16,13 +16,13 @@ name = "pulp_trustify"
 version = "0.4.0"
 description = "Pulp plugin integrating Trustify CVE intelligence for vulnerability-gated artifact serving"
 readme = "README.md"
-license = { text = "Apache-2.0" }
+license = { text = "GPL-2.0-or-later" }
 requires-python = ">=3.11"
 authors = [{ name = "Otávio Fernandes" }]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Framework :: Django",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: GNU General Public License v2.0 or later",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
