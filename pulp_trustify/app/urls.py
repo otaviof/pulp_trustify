@@ -1,5 +1,6 @@
 """URL configuration for pulp_trustify plugin."""
 
+from django.conf import settings
 from django.urls import path
 
 from pulp_trustify.app.viewsets import (
@@ -9,24 +10,30 @@ from pulp_trustify.app.viewsets import (
     ScanViewSet,
 )
 
+if settings.DOMAIN_ENABLED:
+    API_ROOT = "/<slug:pulp_domain>/api/v3/"
+else:
+    API_ROOT = "/api/v3/"
+API_ROOT = settings.API_ROOT.strip("/") + API_ROOT
+
 urlpatterns = [
     path(
-        "pulp/api/v3/trustify/scan/",
+        API_ROOT + "trustify/scan/",
         ScanViewSet.as_view({"post": "create"}),
         name="scan",
     ),
     path(
-        "pulp/api/v3/trustify/advisories/",
+        API_ROOT + "trustify/advisories/",
         ScanAdvisoryViewSet.as_view({"get": "list"}),
         name="advisories",
     ),
     path(
-        "pulp/api/v3/trustify/gate-advisories/",
+        API_ROOT + "trustify/gate-advisories/",
         GateAdvisoryViewSet.as_view({"get": "list"}),
         name="gate-advisories",
     ),
     path(
-        "pulp/api/v3/trustify/-/npm/v1/security/advisories/bulk",
+        API_ROOT + "trustify/-/npm/v1/security/advisories/bulk",
         NpmBulkAdvisoryView.as_view(),
         name="npm-audit-bulk",
     ),

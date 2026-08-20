@@ -1,0 +1,1 @@
+Trustify REST endpoints (`scan`, `advisories`, `gate-advisories`, npm audit) are now registered under the domain-aware API root, so they resolve at domain-scoped paths and scan tasks run within the target repository's domain.
